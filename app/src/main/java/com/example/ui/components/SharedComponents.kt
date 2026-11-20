@@ -14,35 +14,43 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -554,3 +562,189 @@ fun DatePickerField(
         }
     }
 }
+
+@Composable
+fun PaginationFooter(
+    shownCount: Int,
+    totalCount: Int,
+    hasMore: Boolean,
+    isLoading: Boolean,
+    itemLabel: String,
+    onLoadMore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (totalCount <= 0 && !isLoading) return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Showing $shownCount of $totalCount $itemLabel",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+        } else if (hasMore) {
+            OutlinedButton(
+                onClick = onLoadMore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("load_more_${itemLabel.lowercase().replace(' ', '_')}")
+            ) {
+                Text("Load More (${(totalCount - shownCount).coerceAtLeast(0)} remaining)")
+            }
+        }
+    }
+}
+
+data class PickerItem<T>(
+    val value: T,
+    val title: String,
+    val subtitle: String? = null
+)
+
+@Composable
+fun <T> SearchableEntityPickerField(
+    label: String,
+    selectedLabel: String,
+    noneOptionLabel: String? = null,
+    onSelectNone: (() -> Unit)? = null,
+    onSearch: suspend (String) -> List<PickerItem<T>>,
+    onItemSelected: (PickerItem<T>) -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String? = null
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = selectedLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Select $label")
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
+            singleLine = true
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable { showDialog = true }
+        )
+    }
+
+    if (showDialog) {
+        var searchQuery by remember { mutableStateOf("") }
+        var results by remember { mutableStateOf<List<PickerItem<T>>>(emptyList()) }
+        var loading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(searchQuery) {
+            loading = true
+            delay(120)
+            results = runCatching { onSearch(searchQuery) }.getOrDefault(emptyList())
+            loading = false
+        }
+
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Select $label") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (noneOptionLabel != null && onSelectNone != null) {
+                        TextButton(
+                            onClick = {
+                                onSelectNone()
+                                showDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(noneOptionLabel, modifier = Modifier.fillMaxWidth())
+                        }
+                        HorizontalDivider()
+                    }
+                    if (loading && results.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    } else if (results.isEmpty()) {
+                        Text(
+                            text = "No matching entries found.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp)
+                        ) {
+                            items(results) { item ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onItemSelected(item)
+                                            showDialog = false
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 4.dp)
+                                ) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (!item.subtitle.isNullOrBlank()) {
+                                        Text(
+                                            text = item.subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Close") }
+            }
+        )
+    }
+}
+

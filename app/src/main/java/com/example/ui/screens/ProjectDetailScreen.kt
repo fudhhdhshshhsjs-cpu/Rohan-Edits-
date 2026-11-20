@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -28,8 +30,10 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,7 +41,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,6 +72,7 @@ import com.example.ui.components.ProjectStatusBadge
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
+import com.example.ui.state.ProjectDetailState
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
@@ -83,8 +90,33 @@ fun ProjectDetailScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val item = uiState.projectsWithClient.firstOrNull { it.project.id == projectId }
-    if (item == null) {
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    var detailState by remember(projectId) { mutableStateOf(ProjectDetailState(isLoading = true)) }
+
+    LaunchedEffect(
+        projectId,
+        refreshTrigger,
+        uiState.home.totalProjects,
+        uiState.home.totalEarnings,
+        uiState.home.totalVideosCompleted
+    ) {
+        detailState = viewModel.loadProjectDetail(projectId)
+    }
+
+    if (detailState.isLoading) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .testTag("project_detail_screen"),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val p = detailState.project
+    if (p == null) {
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -99,15 +131,14 @@ fun ProjectDetailScreen(
         return
     }
 
-    val p = item.project
     val currency = uiState.settings.currencySymbol
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
-    val linkedPayments = remember(uiState.incomeTransactions, projectId) {
-        uiState.incomeTransactions.filter { it.projectId == projectId }
-    }
+    val linkedPayments = detailState.payments
+    val revisions = detailState.revisions
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showRecordPayment by remember { mutableStateOf(false) }
+    var showAddRevisionDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -130,13 +161,13 @@ fun ProjectDetailScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (!item.clientName.isNullOrBlank() && p.clientId != null) {
+                if (!detailState.clientName.isNullOrBlank() && p.clientId != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     TextButton(
                         onClick = { onOpenClient(p.clientId) },
                         contentPadding = PaddingValues(0.dp)
                     ) {
-                        Text("Client: ${item.clientName}")
+                        Text("Client: ${detailState.clientName}")
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -144,7 +175,7 @@ fun ProjectDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    ProjectStatusBadge(ProjectStatus.fromName(p.projectStatus), item.isOverdue)
+                    ProjectStatusBadge(ProjectStatus.fromName(p.projectStatus), detailState.isOverdue)
                     PriorityBadge(ProjectPriority.fromName(p.priority))
                     PaymentStatusBadge(PaymentStatus.fromName(p.paymentStatus))
                 }
@@ -230,13 +261,13 @@ fun ProjectDetailScreen(
                     Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                         Text("Pending", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            Formatters.formatCurrency(item.remainingAmount, currency),
+                            Formatters.formatCurrency(detailState.remainingAmount, currency),
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontFamily = InterFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontFeatureSettings = "tnum"
                             ),
-                            color = if (item.remainingAmount > 0) StatusAmber else StatusGreen,
+                            color = if (detailState.remainingAmount > 0) StatusAmber else StatusGreen,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -276,7 +307,9 @@ fun ProjectDetailScreen(
                     if (ProjectStatus.fromName(p.projectStatus) != ProjectStatus.COMPLETED) {
                         FilledTonalButton(
                             onClick = {
-                                viewModel.saveProject(p.copy(projectStatus = ProjectStatus.COMPLETED.name))
+                                viewModel.saveProject(p.copy(projectStatus = ProjectStatus.COMPLETED.name)) {
+                                    refreshTrigger++
+                                }
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -309,6 +342,72 @@ fun ProjectDetailScreen(
             }
         }
 
+        // Versioned Revision History
+        item(key = "revision_history_header", contentType = "header") {
+            SectionHeader(
+                title = "Revision History (${detailState.revisionsTotalCount})",
+                actionLabel = "Log Revision",
+                actionTag = "project_add_revision_button",
+                onActionClick = { showAddRevisionDialog = true }
+            )
+        }
+        if (revisions.isEmpty()) {
+            item(key = "revision_history_empty", contentType = "empty") {
+                StudioCard {
+                    Text(
+                        text = "No revisions logged yet. Track cut updates, client change requests, and export versions.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            items(revisions, key = { "rev_${it.id}" }, contentType = { "revision" }) { rev ->
+                StudioCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "v${rev.versionNumber} · ${Formatters.formatTimestamp(rev.createdAtMillis, dateFormat)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = rev.summary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (rev.statusSnapshot.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Status: ${ProjectStatus.fromName(rev.statusSnapshot).label}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                viewModel.deleteProjectRevision(rev.id) { refreshTrigger++ }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete revision",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Linked Payment History
         item(key = "payment_history_header", contentType = "header") {
             SectionHeader(title = "Payment History (${linkedPayments.size})")
@@ -324,7 +423,7 @@ fun ProjectDetailScreen(
                 }
             }
         } else {
-            items(linkedPayments, key = { it.id }, contentType = { "payment" }) { tx ->
+            items(linkedPayments, key = { "pay_${it.id}" }, contentType = { "payment" }) { tx ->
                 StudioCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -373,12 +472,71 @@ fun ProjectDetailScreen(
         )
     }
 
+    if (showAddRevisionDialog) {
+        var revSummary by remember { mutableStateOf("") }
+        var revNotes by remember { mutableStateOf(p.clientFeedback) }
+        var revError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showAddRevisionDialog = false },
+            title = { Text("Log Revision Entry") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = revSummary,
+                        onValueChange = { revSummary = it; revError = null },
+                        label = { Text("Change Summary *") },
+                        placeholder = { Text("e.g. Updated color grade & cut B-roll intro") },
+                        minLines = 2,
+                        maxLines = 5,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = revNotes,
+                        onValueChange = { revNotes = it },
+                        label = { Text("Client Instructions / Notes Snapshot") },
+                        minLines = 2,
+                        maxLines = 5,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (revError != null) {
+                        Text(revError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (revSummary.isBlank()) {
+                        revError = "Revision summary is required."
+                        return@Button
+                    }
+                    viewModel.addProjectRevision(
+                        projectId = projectId,
+                        summary = revSummary,
+                        instructionsSnapshot = revNotes,
+                        statusSnapshot = p.projectStatus
+                    ) {
+                        showAddRevisionDialog = false
+                        refreshTrigger++
+                    }
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Save Revision")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddRevisionDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (showRecordPayment) {
         var amountText by remember {
             mutableStateOf(
-                if (item.remainingAmount > 0.0) {
-                    if (item.remainingAmount % 1.0 == 0.0) item.remainingAmount.toInt().toString()
-                    else item.remainingAmount.toString()
+                if (detailState.remainingAmount > 0.0) {
+                    if (detailState.remainingAmount % 1.0 == 0.0) detailState.remainingAmount.toInt().toString()
+                    else detailState.remainingAmount.toString()
                 } else ""
             )
         }
@@ -395,9 +553,9 @@ fun ProjectDetailScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (item.remainingAmount > 0) {
+                    if (detailState.remainingAmount > 0) {
                         Text(
-                            text = "Remaining balance: ${Formatters.formatCurrency(item.remainingAmount, currency)}",
+                            text = "Remaining balance: ${Formatters.formatCurrency(detailState.remainingAmount, currency)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -446,6 +604,7 @@ fun ProjectDetailScreen(
                         }
                         viewModel.recordProjectPayment(projectId, amt, dateEpoch, method, notes) {
                             showRecordPayment = false
+                            refreshTrigger++
                         }
                     },
                     modifier = Modifier.testTag("confirm_record_payment_button")

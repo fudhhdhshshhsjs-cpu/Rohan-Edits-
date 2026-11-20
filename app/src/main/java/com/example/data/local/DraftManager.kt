@@ -1,19 +1,14 @@
 package com.example.data.local
 
 import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.example.data.local.dao.FormDraftDao
+import com.example.data.local.entity.FormDraftEntity
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-
-private val Context.draftDataStore: DataStore<Preferences> by preferencesDataStore(name = "rohan_edits_drafts")
+import java.io.File
 
 @JsonClass(generateAdapter = true)
 data class ClientFormDraft(
@@ -47,74 +42,119 @@ data class ProjectFormDraft(
     val notes: String = ""
 )
 
+@JsonClass(generateAdapter = true)
+data class NoteFormDraft(
+    val targetNoteId: Long? = null,
+    val title: String = "",
+    val content: String = "",
+    val category: String = "",
+    val clientId: Long? = null,
+    val projectId: Long? = null,
+    val isPinned: Boolean = false
+)
+
 /**
- * Persists in-progress form drafts cleanly on disk (via DataStore) so large text entries
- * are never lost on navigation, screen rotation, or unexpected app closure, without passing
- * oversized payloads through Bundle/Navigation arguments.
+ * Persists in-progress form drafts cleanly on disk (via SQLite form_drafts table when provided,
+ * or individual atomic files under filesDir/drafts) so arbitrarily large text entries never bloat
+ * memory or a single Preferences DataStore file, and never exceed Navigation/Bundle limits.
  */
-class DraftManager(private val context: Context) {
+class DraftManager(
+    private val context: Context,
+    private val formDraftDao: FormDraftDao? = null
+) {
     private val moshi: Moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
     private val clientAdapter = moshi.adapter(ClientFormDraft::class.java)
     private val projectAdapter = moshi.adapter(ProjectFormDraft::class.java)
+    private val noteAdapter = moshi.adapter(NoteFormDraft::class.java)
 
-    private fun clientKey(clientId: Long?) =
-        stringPreferencesKey("draft_client_${clientId ?: "new"}")
+    private val draftsDir: File by lazy {
+        File(context.applicationContext.filesDir, "form_drafts").apply { mkdirs() }
+    }
 
-    private fun projectKey(projectId: Long?) =
-        stringPreferencesKey("draft_project_${projectId ?: "new"}")
+    private fun clientKey(clientId: Long?) = "draft_client_${clientId ?: "new"}"
+    private fun projectKey(projectId: Long?) = "draft_project_${projectId ?: "new"}"
+    private fun noteKey(noteId: Long?) = "draft_note_${noteId ?: "new"}"
 
-    suspend fun saveClientDraft(draft: ClientFormDraft) = withContext(Dispatchers.IO) {
+    private suspend fun writeRawDraft(key: String, json: String) = withContext(Dispatchers.IO) {
+        if (formDraftDao != null) {
+            formDraftDao.saveDraft(FormDraftEntity(draftKey = key, payloadJson = json, updatedAtMillis = System.currentTimeMillis()))
+        } else {
+            val tmp = File(draftsDir, "$key.json.tmp")
+            val target = File(draftsDir, "$key.json")
+            tmp.writeText(json, Charsets.UTF_8)
+            if (!tmp.renameTo(target)) {
+                target.writeText(json, Charsets.UTF_8)
+                tmp.delete()
+            }
+        }
+    }
+
+    private suspend fun readRawDraft(key: String): String? = withContext(Dispatchers.IO) {
+        if (formDraftDao != null) {
+            formDraftDao.getDraft(key)?.payloadJson
+        } else {
+            val target = File(draftsDir, "$key.json")
+            if (target.exists()) target.readText(Charsets.UTF_8) else null
+        }
+    }
+
+    private suspend fun deleteRawDraft(key: String) = withContext(Dispatchers.IO) {
+        if (formDraftDao != null) {
+            formDraftDao.deleteDraft(key)
+        }
+        File(draftsDir, "$key.json").delete()
+        File(draftsDir, "$key.json.tmp").delete()
+    }
+
+    suspend fun clearAllDrafts() = withContext(Dispatchers.IO) {
+        runCatching { formDraftDao?.deleteAllDrafts() }
         runCatching {
-            val json = clientAdapter.toJson(draft)
-            context.draftDataStore.edit { prefs ->
-                prefs[clientKey(draft.targetClientId)] = json
+            if (draftsDir.exists()) {
+                draftsDir.listFiles()?.forEach { it.delete() }
             }
         }
         Unit
     }
 
-    suspend fun getClientDraft(clientId: Long?): ClientFormDraft? = withContext(Dispatchers.IO) {
+    suspend fun saveClientDraft(draft: ClientFormDraft) {
+        runCatching { writeRawDraft(clientKey(draft.targetClientId), clientAdapter.toJson(draft)) }
+    }
+
+    suspend fun getClientDraft(clientId: Long?): ClientFormDraft? =
         runCatching {
-            val json = context.draftDataStore.data.first()[clientKey(clientId)] ?: return@runCatching null
-            clientAdapter.fromJson(json)
+            readRawDraft(clientKey(clientId))?.let { clientAdapter.fromJson(it) }
         }.getOrNull()
+
+    suspend fun clearClientDraft(clientId: Long?) {
+        runCatching { deleteRawDraft(clientKey(clientId)) }
     }
 
-    suspend fun clearClientDraft(clientId: Long?) = withContext(Dispatchers.IO) {
-        runCatching {
-            context.draftDataStore.edit { prefs ->
-                prefs.remove(clientKey(clientId))
-            }
-        }
-        Unit
+    suspend fun saveProjectDraft(draft: ProjectFormDraft) {
+        runCatching { writeRawDraft(projectKey(draft.targetProjectId), projectAdapter.toJson(draft)) }
     }
 
-    suspend fun saveProjectDraft(draft: ProjectFormDraft) = withContext(Dispatchers.IO) {
+    suspend fun getProjectDraft(projectId: Long?): ProjectFormDraft? =
         runCatching {
-            val json = projectAdapter.toJson(draft)
-            context.draftDataStore.edit { prefs ->
-                prefs[projectKey(draft.targetProjectId)] = json
-            }
-        }
-        Unit
-    }
-
-    suspend fun getProjectDraft(projectId: Long?): ProjectFormDraft? = withContext(Dispatchers.IO) {
-        runCatching {
-            val json = context.draftDataStore.data.first()[projectKey(projectId)] ?: return@runCatching null
-            projectAdapter.fromJson(json)
+            readRawDraft(projectKey(projectId))?.let { projectAdapter.fromJson(it) }
         }.getOrNull()
+
+    suspend fun clearProjectDraft(projectId: Long?) {
+        runCatching { deleteRawDraft(projectKey(projectId)) }
     }
 
-    suspend fun clearProjectDraft(projectId: Long?) = withContext(Dispatchers.IO) {
+    suspend fun saveNoteDraft(draft: NoteFormDraft) {
+        runCatching { writeRawDraft(noteKey(draft.targetNoteId), noteAdapter.toJson(draft)) }
+    }
+
+    suspend fun getNoteDraft(noteId: Long?): NoteFormDraft? =
         runCatching {
-            context.draftDataStore.edit { prefs ->
-                prefs.remove(projectKey(projectId))
-            }
-        }
-        Unit
+            readRawDraft(noteKey(noteId))?.let { noteAdapter.fromJson(it) }
+        }.getOrNull()
+
+    suspend fun clearNoteDraft(noteId: Long?) {
+        runCatching { deleteRawDraft(noteKey(noteId)) }
     }
 }

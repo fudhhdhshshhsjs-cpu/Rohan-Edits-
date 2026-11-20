@@ -20,7 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -46,6 +48,8 @@ import com.example.ui.state.MainUiState
 fun MoreMenuScreen(
     uiState: MainUiState,
     onOpenAnalytics: () -> Unit,
+    onOpenNotes: () -> Unit,
+    onOpenGoals: () -> Unit,
     onOpenEditorInfo: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBackupRestore: () -> Unit,
@@ -116,6 +120,24 @@ fun MoreMenuScreen(
                 icon = Icons.Default.Person,
                 tag = "more_editor_info",
                 onClick = onOpenEditorInfo
+            )
+        }
+        item(key = "more_notes", contentType = "menu_item") {
+            MoreMenuItemCard(
+                title = "Notes & Scripts",
+                subtitle = "Project briefs, creative hooks & long editing notes",
+                icon = Icons.Default.Description,
+                tag = "more_notes",
+                onClick = onOpenNotes
+            )
+        }
+        item(key = "more_goals", contentType = "menu_item") {
+            MoreMenuItemCard(
+                title = "Career Goals",
+                subtitle = "Track income, video output & editing milestones",
+                icon = Icons.Default.Flag,
+                tag = "more_goals",
+                onClick = onOpenGoals
             )
         }
         item(key = "more_settings", contentType = "menu_item") {

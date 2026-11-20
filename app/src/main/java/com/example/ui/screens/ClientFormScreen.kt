@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -47,33 +49,44 @@ fun ClientFormScreen(
     onSaved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val existing = remember(clientId, uiState.clientsWithStats) {
-        clientId?.let { id -> uiState.clientsWithStats.firstOrNull { it.client.id == id }?.client }
-    }
+    var existing by remember(clientId) { mutableStateOf<ClientEntity?>(null) }
+    var isLoadingExisting by remember(clientId) { mutableStateOf(clientId != null) }
+
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
     val currency = uiState.settings.currencySymbol
 
-    var name by remember(existing) { mutableStateOf(existing?.name.orEmpty()) }
-    var platform by remember(existing) { mutableStateOf(PlatformType.fromName(existing?.platform)) }
-    var clientType by remember(existing) { mutableStateOf(ClientType.fromName(existing?.clientType)) }
-    var mobileNumber by remember(existing) { mutableStateOf(existing?.mobileNumber.orEmpty()) }
-    var firstProjectDate by remember(existing) { mutableStateOf(existing?.firstProjectDateEpochDay) }
-    var instructions by remember(existing) { mutableStateOf(existing?.instructions.orEmpty()) }
-    var preferredStyle by remember(existing) { mutableStateOf(existing?.preferredEditingStyle.orEmpty()) }
-    var perVideoPrice by remember(existing) {
-        mutableStateOf(
-            existing?.perVideoPrice?.takeIf { it > 0 }?.let {
-                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
-            }.orEmpty()
-        )
-    }
-    var notes by remember(existing) { mutableStateOf(existing?.additionalNotes.orEmpty()) }
+    var name by remember { mutableStateOf("") }
+    var platform by remember { mutableStateOf(PlatformType.YOUTUBE) }
+    var clientType by remember { mutableStateOf(ClientType.NEW) }
+    var mobileNumber by remember { mutableStateOf("") }
+    var firstProjectDate by remember { mutableStateOf<Long?>(null) }
+    var instructions by remember { mutableStateOf("") }
+    var preferredStyle by remember { mutableStateOf("") }
+    var perVideoPrice by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var draftLoaded by remember { mutableStateOf(false) }
     var restoredFromDraft by remember { mutableStateOf(false) }
 
-    // Restore unsaved draft if available
-    LaunchedEffect(clientId, existing) {
+    // Load full existing record (safe for >2MB instructions/notes) then hydrate draft if present
+    LaunchedEffect(clientId) {
+        val loaded = clientId?.let { viewModel.getClientFullSafe(it) }
+        existing = loaded
+        if (loaded != null) {
+            name = loaded.name
+            platform = PlatformType.fromName(loaded.platform)
+            clientType = ClientType.fromName(loaded.clientType)
+            mobileNumber = loaded.mobileNumber
+            firstProjectDate = loaded.firstProjectDateEpochDay
+            instructions = loaded.instructions
+            preferredStyle = loaded.preferredEditingStyle
+            perVideoPrice = loaded.perVideoPrice.takeIf { it > 0 }?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            }.orEmpty()
+            notes = loaded.additionalNotes
+        }
+        isLoadingExisting = false
+
         val draft = viewModel.getClientDraft(clientId)
         if (draft != null && (draft.name.isNotBlank() || draft.instructions.isNotBlank() || draft.additionalNotes.isNotBlank())) {
             name = draft.name
@@ -90,7 +103,7 @@ fun ClientFormScreen(
         draftLoaded = true
     }
 
-    // Debounced auto-save draft to disk so large entries are never lost
+    // Debounced auto-save draft to SQLite so large entries are never lost
     LaunchedEffect(
         draftLoaded, name, platform, clientType, mobileNumber,
         firstProjectDate, instructions, preferredStyle, perVideoPrice, notes
@@ -115,6 +128,13 @@ fun ClientFormScreen(
                 )
             )
         }
+    }
+
+    if (isLoadingExisting) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
     }
 
     LazyColumn(

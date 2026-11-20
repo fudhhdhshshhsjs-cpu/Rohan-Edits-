@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +37,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,10 +62,13 @@ import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ExpandableInfoRow
 import com.example.ui.components.MetricTile
 import com.example.ui.components.PaymentStatusBadge
+import com.example.ui.components.PickerItem
 import com.example.ui.components.ProjectStatusBadge
+import com.example.ui.components.SearchableEntityPickerField
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
+import com.example.ui.state.ClientDetailState
 import com.example.ui.state.MainUiState
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
@@ -81,8 +88,33 @@ fun ClientDetailScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val clientStats = uiState.clientsWithStats.firstOrNull { it.client.id == clientId }
-    if (clientStats == null) {
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    var detailState by remember(clientId) { mutableStateOf(ClientDetailState(isLoading = true)) }
+
+    LaunchedEffect(
+        clientId,
+        refreshTrigger,
+        uiState.home.totalProjects,
+        uiState.home.totalEarnings,
+        uiState.home.pendingClientPayments
+    ) {
+        detailState = viewModel.loadClientDetail(clientId)
+    }
+
+    if (detailState.isLoading) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .testTag("client_detail_screen"),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val client = detailState.client
+    if (client == null) {
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -97,15 +129,10 @@ fun ClientDetailScreen(
         return
     }
 
-    val client = clientStats.client
     val currency = uiState.settings.currencySymbol
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
-    val clientProjects = remember(uiState.projectsWithClient, clientId) {
-        uiState.projectsWithClient.filter { it.project.clientId == clientId }
-    }
-    val clientPayments = remember(uiState.incomeTransactions, clientId) {
-        uiState.incomeTransactions.filter { it.clientId == clientId }
-    }
+    val clientProjects = detailState.projects
+    val clientPayments = detailState.payments
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showRecordPaymentDialog by remember { mutableStateOf(false) }
@@ -203,12 +230,12 @@ fun ClientDetailScreen(
                 ) {
                     MetricTile(
                         label = "Total Projects",
-                        value = clientStats.totalProjects.toString(),
+                        value = detailState.totalProjects.toString(),
                         modifier = Modifier.weight(1f)
                     )
                     MetricTile(
                         label = "Completed Videos",
-                        value = clientStats.completedVideos.toString(),
+                        value = detailState.completedVideos.toString(),
                         accentColor = StatusGreen,
                         modifier = Modifier.weight(1f)
                     )
@@ -219,13 +246,13 @@ fun ClientDetailScreen(
                 ) {
                     MetricTile(
                         label = "Earnings Received",
-                        value = Formatters.formatCurrency(clientStats.totalEarningsReceived, currency),
+                        value = Formatters.formatCurrency(detailState.totalEarningsReceived, currency),
                         accentColor = StatusGreen,
                         modifier = Modifier.weight(1f)
                     )
                     MetricTile(
                         label = "Pending Payments",
-                        value = Formatters.formatCurrency(clientStats.pendingPayments, currency),
+                        value = Formatters.formatCurrency(detailState.pendingPayments, currency),
                         accentColor = StatusAmber,
                         modifier = Modifier.weight(1f)
                     )
@@ -283,8 +310,8 @@ fun ClientDetailScreen(
         // Project History
         item {
             SectionHeader(
-                title = "Project History (${clientProjects.size})",
-                actionLabel = if (clientProjects.isNotEmpty()) "View All" else null,
+                title = "Project History (${detailState.totalProjects})",
+                actionLabel = if (detailState.totalProjects > 0) "View All" else null,
                 onActionClick = { onViewAllClientProjects(clientId) }
             )
         }
@@ -405,7 +432,7 @@ fun ClientDetailScreen(
                         text = "Financial income records are ALWAYS preserved safely so your ledger totals stay accurate. Linked projects will be unlinked by default.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    if (clientProjects.isNotEmpty()) {
+                    if (detailState.totalProjects > 0) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -415,7 +442,7 @@ fun ClientDetailScreen(
                                 onCheckedChange = { alsoDeleteProjects = it }
                             )
                             Text(
-                                text = "Also delete ${clientProjects.size} associated project(s) (income history remains intact)",
+                                text = "Also delete ${detailState.totalProjects} associated project(s) (income history remains intact)",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -447,6 +474,13 @@ fun ClientDetailScreen(
             ProjectStatus.fromName(it.project.projectStatus) != ProjectStatus.CANCELLED && it.remainingAmount > 0.0
         }
         var selectedProjectId by remember { mutableStateOf(unpaidOrPartial.firstOrNull()?.project?.id) }
+        var selectedProjectLabel by remember {
+            mutableStateOf(
+                unpaidOrPartial.firstOrNull()?.let {
+                    "${it.project.title} (Due ${Formatters.formatCurrency(it.remainingAmount, currency)})"
+                } ?: "General Client Income (No Project)"
+            )
+        }
         var amountText by remember {
             mutableStateOf(unpaidOrPartial.firstOrNull()?.remainingAmount?.let {
                 if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
@@ -465,24 +499,32 @@ fun ClientDetailScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (clientProjects.isNotEmpty()) {
-                        val options = listOf<Pair<Long?, String>>(null to "General Client Income (No Project)") +
-                            clientProjects.map { it.project.id to "${it.project.title} (Due ${Formatters.formatCurrency(it.remainingAmount, currency)})" }
-                        val selectedLabel = options.firstOrNull { it.first == selectedProjectId }?.second
-                            ?: "General Client Income"
-                        DropdownSelectorField(
+                    if (detailState.totalProjects > 0) {
+                        SearchableEntityPickerField(
                             label = "Link to Project",
-                            selectedLabel = selectedLabel,
-                            options = options,
-                            onOptionSelected = { pid ->
-                                selectedProjectId = pid
-                                val proj = clientProjects.firstOrNull { it.project.id == pid }
-                                if (proj != null && proj.remainingAmount > 0) {
-                                    amountText = if (proj.remainingAmount % 1.0 == 0.0) {
-                                        proj.remainingAmount.toInt().toString()
-                                    } else {
-                                        proj.remainingAmount.toString()
-                                    }
+                            selectedLabel = if (selectedProjectId == null) "General Client Income (No Project)" else selectedProjectLabel,
+                            noneOptionLabel = "General Client Income (No Project)",
+                            onSelectNone = {
+                                selectedProjectId = null
+                                selectedProjectLabel = "General Client Income (No Project)"
+                            },
+                            onSearch = { q ->
+                                viewModel.searchProjectsForPicker(q, clientId).map { opt ->
+                                    val rem = (opt.projectAmount - opt.amountPaid).coerceAtLeast(0.0)
+                                    PickerItem(
+                                        value = opt,
+                                        title = opt.title,
+                                        subtitle = "Due ${Formatters.formatCurrency(rem, currency)}"
+                                    )
+                                }
+                            },
+                            onItemSelected = { picked ->
+                                val opt = picked.value
+                                val rem = (opt.projectAmount - opt.amountPaid).coerceAtLeast(0.0)
+                                selectedProjectId = opt.id
+                                selectedProjectLabel = "${opt.title} (Due ${Formatters.formatCurrency(rem, currency)})"
+                                if (rem > 0.0) {
+                                    amountText = if (rem % 1.0 == 0.0) rem.toInt().toString() else rem.toString()
                                 }
                             }
                         )
@@ -531,6 +573,7 @@ fun ClientDetailScreen(
                         if (pid != null) {
                             viewModel.recordProjectPayment(pid, amt, dateEpoch, method, notes) {
                                 showRecordPaymentDialog = false
+                                refreshTrigger++
                             }
                         } else {
                             viewModel.saveIncome(
@@ -545,6 +588,7 @@ fun ClientDetailScreen(
                                 )
                             ) {
                                 showRecordPaymentDialog = false
+                                refreshTrigger++
                             }
                         }
                     }

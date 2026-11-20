@@ -3,10 +3,13 @@ package com.example.ui.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
@@ -34,7 +37,9 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -71,6 +76,7 @@ import com.example.ui.screens.AppSettingsScreen
 import com.example.ui.screens.BackupRestoreScreen
 import com.example.ui.screens.BudgetScreen
 import com.example.ui.screens.CalendarScreen
+import com.example.ui.screens.CareerGoalsScreen
 import com.example.ui.screens.ClientDetailScreen
 import com.example.ui.screens.ClientFormScreen
 import com.example.ui.screens.ClientsHubScreen
@@ -79,6 +85,7 @@ import com.example.ui.screens.ExportDataScreen
 import com.example.ui.screens.GlobalSearchScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MoreMenuScreen
+import com.example.ui.screens.NotesScreen
 import com.example.ui.screens.ProjectDetailScreen
 import com.example.ui.screens.ProjectFormScreen
 import com.example.ui.theme.RohanEditsTheme
@@ -99,6 +106,8 @@ object Routes {
     const val PROJECT_FORM = "project_form?projectId={projectId}&clientId={clientId}"
 
     const val ANALYTICS = "analytics"
+    const val NOTES = "notes"
+    const val CAREER_GOALS = "career_goals"
     const val EDITOR_INFO = "editor_info"
     const val SETTINGS = "settings"
     const val BACKUP_RESTORE = "backup_restore"
@@ -138,6 +147,7 @@ private val topLevelTabs = listOf(
 @Composable
 fun RohanEditsAppShell(viewModel: MainViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val storageError by viewModel.storageError.collectAsStateWithLifecycle()
     val themeMode = ThemeMode.fromName(uiState.settings.themeMode)
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -159,13 +169,16 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(uiState.settings.deadlineRemindersEnabled, uiState.projectsWithClient.size) {
-        if (uiState.settings.deadlineRemindersEnabled && uiState.projectsWithClient.isNotEmpty()) {
-            DeadlineNotificationHelper.notifyUpcomingDeadlines(
-                context = context,
-                projects = uiState.projectsWithClient.map { it.project },
-                today = uiState.today
-            )
+    LaunchedEffect(uiState.settings.deadlineRemindersEnabled, uiState.home.totalProjects, uiState.today) {
+        if (uiState.settings.deadlineRemindersEnabled && uiState.home.totalProjects > 0) {
+            val dueProjects = viewModel.getDueOrOverdueProjectsForReminder(uiState.today)
+            if (dueProjects.isNotEmpty()) {
+                DeadlineNotificationHelper.notifyUpcomingDeadlines(
+                    context = context,
+                    projects = dueProjects,
+                    today = uiState.today
+                )
+            }
         }
     }
 
@@ -213,9 +226,11 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                 if (pid > 0L) "Edit Project" else "Add Project"
             }
             currentRoute == Routes.ANALYTICS -> "Analytics Dashboard"
+            currentRoute == Routes.NOTES -> "Notes & Scripts"
+            currentRoute == Routes.CAREER_GOALS -> "Career Goals"
             currentRoute == Routes.EDITOR_INFO -> "Editor Info"
             currentRoute == Routes.SETTINGS -> "App Settings"
-            currentRoute == Routes.BACKUP_RESTORE -> "Data Backup & Restore"
+            currentRoute == Routes.BACKUP_RESTORE -> "Backup & Storage"
             currentRoute == Routes.EXPORT_DATA -> "Export Data"
             currentRoute == Routes.ABOUT_APP -> "About App"
             currentRoute == Routes.GLOBAL_SEARCH -> "Search"
@@ -267,6 +282,30 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                         thickness = 1.dp,
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
+                    if (!storageError.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = storageError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { viewModel.clearStorageError() }) {
+                                    Text("Dismiss")
+                                }
+                            }
+                        }
+                    }
                 }
             },
             bottomBar = {
@@ -361,6 +400,7 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                     composable(Routes.CLIENTS) {
                         ClientsHubScreen(
                             uiState = uiState,
+                            viewModel = viewModel,
                             showProjectsTab = showProjectsInHub,
                             onTabChange = { showProjectsInHub = it },
                             onAddClient = { navController.navigate(Routes.clientForm()) },
@@ -393,6 +433,8 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                         MoreMenuScreen(
                             uiState = uiState,
                             onOpenAnalytics = { navController.navigate(Routes.ANALYTICS) },
+                            onOpenNotes = { navController.navigate(Routes.NOTES) },
+                            onOpenGoals = { navController.navigate(Routes.CAREER_GOALS) },
                             onOpenEditorInfo = { navController.navigate(Routes.EDITOR_INFO) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             onOpenBackupRestore = { navController.navigate(Routes.BACKUP_RESTORE) },
@@ -483,6 +525,14 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                         AnalyticsScreen(uiState = uiState, viewModel = viewModel)
                     }
 
+                    composable(Routes.NOTES) {
+                        NotesScreen(uiState = uiState, viewModel = viewModel)
+                    }
+
+                    composable(Routes.CAREER_GOALS) {
+                        CareerGoalsScreen(uiState = uiState, viewModel = viewModel)
+                    }
+
                     composable(Routes.EDITOR_INFO) {
                         EditorInfoScreen(uiState = uiState, viewModel = viewModel)
                     }
@@ -509,7 +559,9 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
                             viewModel = viewModel,
                             onOpenClient = { cid -> navController.navigate(Routes.clientDetail(cid)) },
                             onOpenProject = { pid -> navController.navigate(Routes.projectDetail(pid)) },
-                            onOpenBudget = { navigateTopLevel(Routes.BUDGET) }
+                            onOpenBudget = { navigateTopLevel(Routes.BUDGET) },
+                            onOpenNotes = { navController.navigate(Routes.NOTES) },
+                            onOpenGoals = { navController.navigate(Routes.CAREER_GOALS) }
                         )
                     }
                 }

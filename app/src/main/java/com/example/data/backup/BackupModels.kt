@@ -2,17 +2,21 @@ package com.example.data.backup
 
 import com.example.data.local.entity.AppSettingsEntity
 import com.example.data.local.entity.CalendarDayEntity
+import com.example.data.local.entity.CareerGoalEntity
 import com.example.data.local.entity.ClientEntity
 import com.example.data.local.entity.EditorProfileEntity
 import com.example.data.local.entity.ExpenseTransactionEntity
 import com.example.data.local.entity.IncomeTransactionEntity
+import com.example.data.local.entity.NoteEntity
 import com.example.data.local.entity.ProjectEntity
+import com.example.data.local.entity.ProjectRevisionEntity
+import com.example.data.model.RestoreMode
 import com.example.data.repository.DatabaseSnapshot
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class BackupPayloadDto(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val appName: String = "Rohan Edits App",
     val exportedAtMillis: Long = System.currentTimeMillis(),
     val editorProfile: EditorProfileDto,
@@ -21,7 +25,10 @@ data class BackupPayloadDto(
     val calendarDays: List<CalendarDayDto>,
     val incomeTransactions: List<IncomeTransactionDto>,
     val expenseTransactions: List<ExpenseTransactionDto>,
-    val appSettings: AppSettingsDto
+    val appSettings: AppSettingsDto,
+    val notes: List<NoteDto> = emptyList(),
+    val projectRevisions: List<ProjectRevisionDto> = emptyList(),
+    val careerGoals: List<CareerGoalDto> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -113,6 +120,44 @@ data class ExpenseTransactionDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class NoteDto(
+    val id: Long,
+    val title: String,
+    val content: String = "",
+    val category: String = "GENERAL",
+    val clientId: Long? = null,
+    val projectId: Long? = null,
+    val isPinned: Boolean = false,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L
+)
+
+@JsonClass(generateAdapter = true)
+data class ProjectRevisionDto(
+    val id: Long,
+    val projectId: Long,
+    val versionNumber: Int = 1,
+    val summary: String,
+    val instructionsSnapshot: String = "",
+    val statusSnapshot: String = "",
+    val createdAtMillis: Long = 0L
+)
+
+@JsonClass(generateAdapter = true)
+data class CareerGoalDto(
+    val id: Long,
+    val title: String,
+    val description: String = "",
+    val targetMetric: String = "CUSTOM",
+    val targetValue: Double,
+    val currentValue: Double = 0.0,
+    val deadlineEpochDay: Long? = null,
+    val status: String = "ACTIVE",
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L
+)
+
+@JsonClass(generateAdapter = true)
 data class AppSettingsDto(
     val id: Int = 1,
     val themeMode: String,
@@ -122,7 +167,29 @@ data class AppSettingsDto(
     val deadlineRemindersEnabled: Boolean = false
 )
 
+data class BackupFileInspection(
+    val schemaVersion: Int = 1,
+    val appName: String = "Rohan Edits App",
+    val exportedAtMillis: Long = 0L,
+    val clientCount: Int = 0,
+    val projectCount: Int = 0,
+    val calendarDayCount: Int = 0,
+    val incomeCount: Int = 0,
+    val expenseCount: Int = 0,
+    val noteCount: Int = 0,
+    val revisionCount: Int = 0,
+    val goalCount: Int = 0
+)
+
+data class RestoreSummary(
+    val mode: RestoreMode,
+    val insertedCount: Int,
+    val skippedDuplicatesCount: Int,
+    val totalProcessed: Int
+)
+
 fun DatabaseSnapshot.toDto(): BackupPayloadDto = BackupPayloadDto(
+    schemaVersion = 2,
     editorProfile = EditorProfileDto(
         id = editorProfile.id,
         name = editorProfile.name,
@@ -216,7 +283,45 @@ fun DatabaseSnapshot.toDto(): BackupPayloadDto = BackupPayloadDto(
         currencySymbol = appSettings.currencySymbol,
         confirmBeforeDelete = appSettings.confirmBeforeDelete,
         deadlineRemindersEnabled = appSettings.deadlineRemindersEnabled
-    )
+    ),
+    notes = notes.map {
+        NoteDto(
+            id = it.id,
+            title = it.title,
+            content = it.content,
+            category = it.category,
+            clientId = it.clientId,
+            projectId = it.projectId,
+            isPinned = it.isPinned,
+            createdAtMillis = it.createdAtMillis,
+            updatedAtMillis = it.updatedAtMillis
+        )
+    },
+    projectRevisions = projectRevisions.map {
+        ProjectRevisionDto(
+            id = it.id,
+            projectId = it.projectId,
+            versionNumber = it.versionNumber,
+            summary = it.summary,
+            instructionsSnapshot = it.instructionsSnapshot,
+            statusSnapshot = it.statusSnapshot,
+            createdAtMillis = it.createdAtMillis
+        )
+    },
+    careerGoals = careerGoals.map {
+        CareerGoalDto(
+            id = it.id,
+            title = it.title,
+            description = it.description,
+            targetMetric = it.targetMetric,
+            targetValue = it.targetValue,
+            currentValue = it.currentValue,
+            deadlineEpochDay = it.deadlineEpochDay,
+            status = it.status,
+            createdAtMillis = it.createdAtMillis,
+            updatedAtMillis = it.updatedAtMillis
+        )
+    }
 )
 
 fun BackupPayloadDto.toSnapshotValidated(): DatabaseSnapshot {
@@ -238,6 +343,17 @@ fun BackupPayloadDto.toSnapshotValidated(): DatabaseSnapshot {
     }
     expenseTransactions.forEach {
         require(it.amount > 0.0) { "Invalid expense amount in backup." }
+    }
+    notes.forEach {
+        require(it.title.isNotBlank()) { "Invalid note title in backup." }
+    }
+    projectRevisions.forEach {
+        require(it.summary.isNotBlank()) { "Invalid revision summary in backup." }
+        require(it.projectId in validProjectIds) { "Revision references missing project ${it.projectId}." }
+    }
+    careerGoals.forEach {
+        require(it.title.isNotBlank()) { "Invalid goal title in backup." }
+        require(it.targetValue > 0.0) { "Invalid goal target value in backup." }
     }
 
     return DatabaseSnapshot(
@@ -334,6 +450,44 @@ fun BackupPayloadDto.toSnapshotValidated(): DatabaseSnapshot {
             currencySymbol = appSettings.currencySymbol.ifBlank { "₹" },
             confirmBeforeDelete = appSettings.confirmBeforeDelete,
             deadlineRemindersEnabled = appSettings.deadlineRemindersEnabled
-        )
+        ),
+        notes = notes.map {
+            NoteEntity(
+                id = it.id,
+                title = it.title,
+                content = it.content,
+                category = it.category,
+                clientId = it.clientId?.takeIf { cid -> cid in validClientIds },
+                projectId = it.projectId?.takeIf { pid -> pid in validProjectIds },
+                isPinned = it.isPinned,
+                createdAtMillis = it.createdAtMillis,
+                updatedAtMillis = it.updatedAtMillis
+            )
+        },
+        projectRevisions = projectRevisions.map {
+            ProjectRevisionEntity(
+                id = it.id,
+                projectId = it.projectId,
+                versionNumber = it.versionNumber,
+                summary = it.summary,
+                instructionsSnapshot = it.instructionsSnapshot,
+                statusSnapshot = it.statusSnapshot,
+                createdAtMillis = it.createdAtMillis
+            )
+        },
+        careerGoals = careerGoals.map {
+            CareerGoalEntity(
+                id = it.id,
+                title = it.title,
+                description = it.description,
+                targetMetric = it.targetMetric,
+                targetValue = it.targetValue,
+                currentValue = it.currentValue,
+                deadlineEpochDay = it.deadlineEpochDay,
+                status = it.status,
+                createdAtMillis = it.createdAtMillis,
+                updatedAtMillis = it.updatedAtMillis
+            )
+        }
     )
 }

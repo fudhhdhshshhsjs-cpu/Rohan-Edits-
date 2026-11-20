@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -38,9 +40,12 @@ import com.example.data.model.VideoCategory
 import com.example.data.repository.CareerRepository
 import com.example.ui.components.DatePickerField
 import com.example.ui.components.DropdownSelectorField
+import com.example.ui.components.PickerItem
+import com.example.ui.components.SearchableEntityPickerField
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
 import com.example.ui.viewmodel.MainViewModel
+import com.example.util.Formatters
 import kotlinx.coroutines.delay
 
 @Composable
@@ -52,45 +57,52 @@ fun ProjectFormScreen(
     onSaved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val existing = remember(projectId, uiState.projectsWithClient) {
-        projectId?.let { id -> uiState.projectsWithClient.firstOrNull { it.project.id == id }?.project }
-    }
+    var existing by remember(projectId) { mutableStateOf<ProjectEntity?>(null) }
+    var isLoadingExisting by remember(projectId) { mutableStateOf(projectId != null) }
+
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
     val currency = uiState.settings.currencySymbol
 
-    var category by remember(existing) {
-        mutableStateOf(
-            if (existing != null) VideoCategory.fromName(existing.category)
-            else VideoCategory.CLIENT_VIDEO
-        )
-    }
-    var selectedClientId by remember(existing, preselectedClientId) {
-        mutableStateOf(existing?.clientId ?: preselectedClientId)
-    }
-    var title by remember(existing) { mutableStateOf(existing?.title.orEmpty()) }
-    var projectType by remember(existing) { mutableStateOf(ProjectType.fromName(existing?.projectType)) }
-    var priority by remember(existing) { mutableStateOf(ProjectPriority.fromName(existing?.priority)) }
-    var duration by remember(existing) { mutableStateOf(existing?.videoDuration.orEmpty()) }
-    var projectDate by remember(existing) {
-        mutableStateOf(existing?.projectDateEpochDay ?: uiState.today.toEpochDay())
-    }
-    var deadline by remember(existing) { mutableStateOf(existing?.deadlineEpochDay) }
-    var amountText by remember(existing) {
-        mutableStateOf(
-            existing?.projectAmount?.takeIf { it > 0 }?.let {
-                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
-            }.orEmpty()
-        )
-    }
-    var projectStatus by remember(existing) { mutableStateOf(ProjectStatus.fromName(existing?.projectStatus)) }
-    var ratingText by remember(existing) { mutableStateOf(existing?.clientRating?.toString().orEmpty()) }
-    var feedback by remember(existing) { mutableStateOf(existing?.clientFeedback.orEmpty()) }
-    var notes by remember(existing) { mutableStateOf(existing?.additionalNotes.orEmpty()) }
+    var category by remember { mutableStateOf(VideoCategory.CLIENT_VIDEO) }
+    var selectedClientId by remember(preselectedClientId) { mutableStateOf(preselectedClientId) }
+    var selectedClientLabel by remember { mutableStateOf<String?>(null) }
+    var title by remember { mutableStateOf("") }
+    var projectType by remember { mutableStateOf(ProjectType.MOTION_GRAPHICS) }
+    var priority by remember { mutableStateOf(ProjectPriority.NORMAL) }
+    var duration by remember { mutableStateOf("") }
+    var projectDate by remember { mutableStateOf(uiState.today.toEpochDay()) }
+    var deadline by remember { mutableStateOf<Long?>(null) }
+    var amountText by remember { mutableStateOf("") }
+    var projectStatus by remember { mutableStateOf(ProjectStatus.PENDING) }
+    var ratingText by remember { mutableStateOf("") }
+    var feedback by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var draftLoaded by remember { mutableStateOf(false) }
     var restoredFromDraft by remember { mutableStateOf(false) }
 
-    LaunchedEffect(projectId, existing) {
+    LaunchedEffect(projectId) {
+        val loaded = projectId?.let { viewModel.getProjectFullSafe(it) }
+        existing = loaded
+        if (loaded != null) {
+            category = VideoCategory.fromName(loaded.category)
+            selectedClientId = loaded.clientId
+            title = loaded.title
+            projectType = ProjectType.fromName(loaded.projectType)
+            priority = ProjectPriority.fromName(loaded.priority)
+            duration = loaded.videoDuration
+            projectDate = loaded.projectDateEpochDay
+            deadline = loaded.deadlineEpochDay
+            amountText = loaded.projectAmount.takeIf { it > 0 }?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            }.orEmpty()
+            projectStatus = ProjectStatus.fromName(loaded.projectStatus)
+            ratingText = loaded.clientRating?.toString().orEmpty()
+            feedback = loaded.clientFeedback
+            notes = loaded.additionalNotes
+        }
+        isLoadingExisting = false
+
         val draft = viewModel.getProjectDraft(projectId)
         if (draft != null && (draft.title.isNotBlank() || draft.feedback.isNotBlank() || draft.notes.isNotBlank())) {
             if (draft.category.isNotBlank()) category = VideoCategory.fromName(draft.category)
@@ -109,6 +121,23 @@ fun ProjectFormScreen(
             restoredFromDraft = true
         }
         draftLoaded = true
+    }
+
+    LaunchedEffect(selectedClientId) {
+        val cid = selectedClientId
+        selectedClientLabel = if (cid == null) {
+            null
+        } else {
+            val client = viewModel.getClientFullSafe(cid)
+            if (client != null && existing == null && amountText.isBlank() && client.perVideoPrice > 0) {
+                amountText = if (client.perVideoPrice % 1.0 == 0.0) {
+                    client.perVideoPrice.toInt().toString()
+                } else {
+                    client.perVideoPrice.toString()
+                }
+            }
+            client?.name
+        }
     }
 
     LaunchedEffect(
@@ -141,17 +170,15 @@ fun ProjectFormScreen(
         }
     }
 
-    val clientOptions = remember(uiState.clientsWithStats, category) {
-        val base = uiState.clientsWithStats.map { it.client.id to it.client.name }
-        if (category == VideoCategory.CLIENT_VIDEO) {
-            base
-        } else {
-            listOf<Pair<Long?, String>>(null to "No Client (Personal / Standalone)") + base
+    if (isLoadingExisting) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
     }
 
-    val selectedClientLabel = clientOptions.firstOrNull { it.first == selectedClientId }?.second
-        ?: if (category == VideoCategory.CLIENT_VIDEO) "Select Client (Required)" else "No Client"
+    val displayedClientLabel = selectedClientLabel
+        ?: if (category == VideoCategory.CLIENT_VIDEO) "Select Client (Required)" else "No Client (Personal / Standalone)"
 
     LazyColumn(
         modifier = modifier
@@ -177,7 +204,7 @@ fun ProjectFormScreen(
                         )
                         TextButton(onClick = {
                             viewModel.clearProjectDraft(projectId)
-                            category = if (existing != null) VideoCategory.fromName(existing.category) else VideoCategory.CLIENT_VIDEO
+                            category = if (existing != null) VideoCategory.fromName(existing!!.category) else VideoCategory.CLIENT_VIDEO
                             selectedClientId = existing?.clientId ?: preselectedClientId
                             title = existing?.title.orEmpty()
                             projectType = ProjectType.fromName(existing?.projectType)
@@ -215,27 +242,48 @@ fun ProjectFormScreen(
         }
 
         item(key = "client") {
-            DropdownSelectorField(
+            SearchableEntityPickerField(
                 label = if (category == VideoCategory.CLIENT_VIDEO) "Client *" else "Client (Optional)",
-                selectedLabel = selectedClientLabel,
-                options = clientOptions,
-                onOptionSelected = { cid ->
-                    selectedClientId = cid
-                    errorMessage = null
-                    if (existing == null && amountText.isBlank() && cid != null) {
-                        val c = uiState.clientsWithStats.firstOrNull { it.client.id == cid }?.client
-                        if (c != null && c.perVideoPrice > 0) {
-                            amountText = if (c.perVideoPrice % 1.0 == 0.0) {
-                                c.perVideoPrice.toInt().toString()
+                selectedLabel = displayedClientLabel,
+                noneOptionLabel = if (category == VideoCategory.CLIENT_VIDEO) null else "No Client (Personal / Standalone)",
+                onSelectNone = if (category == VideoCategory.CLIENT_VIDEO) {
+                    null
+                } else {
+                    {
+                        selectedClientId = null
+                        selectedClientLabel = null
+                        errorMessage = null
+                    }
+                },
+                onSearch = { q ->
+                    viewModel.searchClientsForPicker(q).map { opt ->
+                        PickerItem(
+                            value = opt,
+                            title = opt.name,
+                            subtitle = if (opt.perVideoPrice > 0) {
+                                "${opt.platform} · ${Formatters.formatCurrency(opt.perVideoPrice, currency)}/video"
                             } else {
-                                c.perVideoPrice.toString()
+                                opt.platform
                             }
+                        )
+                    }
+                },
+                onItemSelected = { picked ->
+                    val c = picked.value
+                    selectedClientId = c.id
+                    selectedClientLabel = c.name
+                    errorMessage = null
+                    if (existing == null && amountText.isBlank() && c.perVideoPrice > 0) {
+                        amountText = if (c.perVideoPrice % 1.0 == 0.0) {
+                            c.perVideoPrice.toInt().toString()
+                        } else {
+                            c.perVideoPrice.toString()
                         }
                     }
                 },
                 testTag = "project_client_selector"
             )
-            if (category == VideoCategory.CLIENT_VIDEO && uiState.clientsWithStats.isEmpty()) {
+            if (category == VideoCategory.CLIENT_VIDEO && uiState.home.totalClients == 0) {
                 Text(
                     text = "Tip: Add a client first to create a commissioned Client Video, or choose Personal/Portfolio/Practice Video.",
                     style = MaterialTheme.typography.bodySmall,

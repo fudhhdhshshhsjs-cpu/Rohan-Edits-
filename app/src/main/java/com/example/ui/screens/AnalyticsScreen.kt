@@ -42,8 +42,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.model.ClientType
-import com.example.data.model.ProjectStatus
 import com.example.data.model.VideoCategory
 import com.example.ui.components.MetricTile
 import com.example.ui.components.SectionHeader
@@ -72,22 +70,21 @@ fun AnalyticsScreen(
     var selectedFinancialIndex by remember { mutableIntStateOf(-1) }
     var videoCategoryFilter by remember { mutableStateOf<VideoCategory?>(null) }
 
-    val financialSeries = remember(earningsMode, uiState.incomeTransactions, uiState.expenseTransactions, uiState.today) {
+    val financialSeries = remember(earningsMode, uiState) {
         viewModel.computeFinancialSeries(earningsMode, uiState)
     }
-    val videoOutputSeries = remember(videoCategoryFilter, uiState.projectsWithClient, uiState.today) {
+    val videoOutputSeries = remember(videoCategoryFilter, uiState) {
         viewModel.computeVideoOutputSeries(videoCategoryFilter, uiState)
     }
     val avgVideosPerMonth = remember(uiState.home.totalVideosCompleted, uiState.today, uiState.home.officialStartDate) {
         viewModel.computeAverageVideosPerMonth(uiState)
     }
 
-    val newClientsCount = uiState.clientsWithStats.count { it.client.clientType == ClientType.NEW.name }
-    val oldClientsCount = uiState.clientsWithStats.count { it.client.clientType == ClientType.OLD.name }
-    val regularClientsCount = uiState.clientsWithStats.count { it.client.clientType == ClientType.REGULAR.name }
-    val topClients = remember(uiState.clientsWithStats) {
-        uiState.clientsWithStats.sortedByDescending { it.totalProjects }.take(5)
-    }
+    val clientBreakdown = uiState.clientAnalytics
+    val newClientsCount = clientBreakdown.newCount
+    val oldClientsCount = clientBreakdown.oldCount
+    val regularClientsCount = clientBreakdown.regularCount
+    val topClients = clientBreakdown.topClients
 
     LazyColumn(
         modifier = modifier
@@ -184,7 +181,7 @@ fun AnalyticsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Completed Projects", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                "${uiState.projectsWithClient.count { it.project.projectStatus == ProjectStatus.COMPLETED.name }}",
+                                "${home.totalVideosCompleted}",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = InterFontFamily,
                                     fontWeight = FontWeight.Bold,
@@ -294,7 +291,7 @@ fun AnalyticsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                "${uiState.clientsWithStats.size}",
+                                "${clientBreakdown.total}",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = InterFontFamily,
                                     fontWeight = FontWeight.Bold,

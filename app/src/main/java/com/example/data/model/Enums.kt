@@ -163,3 +163,51 @@ enum class ProjectSortOption(val label: String) {
     AMOUNT_DESC("Highest Amount"),
     PRIORITY_DESC("Highest Priority")
 }
+
+enum class NoteCategory(val label: String) {
+    GENERAL("General"),
+    CLIENT("Client Note"),
+    PROJECT("Project Brief"),
+    SCRIPT("Script / Hook"),
+    IDEA("Creative Idea");
+
+    companion object {
+        fun fromName(name: String?): NoteCategory =
+            entries.firstOrNull { it.name == name } ?: GENERAL
+    }
+}
+
+enum class GoalMetric(val label: String) {
+    PROJECTS("Completed Videos"),
+    INCOME("Total Earnings"),
+    CLIENTS("Total Clients"),
+    EDITING_DAYS("Editing Days"),
+    CUSTOM("Custom Milestone");
+
+    companion object {
+        fun fromName(name: String?): GoalMetric =
+            entries.firstOrNull { it.name == name } ?: CUSTOM
+    }
+}
+
+enum class GoalStatus(val label: String) {
+    ACTIVE("Active"),
+    COMPLETED("Completed"),
+    PAUSED("Paused");
+
+    companion object {
+        fun fromName(name: String?): GoalStatus =
+            entries.firstOrNull { it.name == name } ?: ACTIVE
+    }
+}
+
+enum class RestoreMode(val label: String, val description: String) {
+    MERGE_SKIP_DUPLICATES(
+        "Merge & Skip Duplicates",
+        "Keeps all existing records, imports new entries, and safely skips duplicates."
+    ),
+    REPLACE_ALL(
+        "Replace All Data",
+        "Deletes all current records and replaces them with the backup contents."
+    )
+}

@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.DateFormatOption
 import com.example.data.model.PaymentStatus
 import com.example.data.model.ProjectPriority
@@ -59,103 +61,62 @@ import com.example.data.model.VideoCategory
 import com.example.ui.components.DatePickerField
 import com.example.ui.components.DropdownSelectorField
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.PaginationFooter
 import com.example.ui.components.PaymentStatusBadge
+import com.example.ui.components.PickerItem
 import com.example.ui.components.PriorityBadge
 import com.example.ui.components.ProjectStatusBadge
+import com.example.ui.components.SearchableEntityPickerField
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusRed
+import com.example.ui.viewmodel.MainViewModel
 import com.example.util.Formatters
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProjectsScreen(
     uiState: MainUiState,
+    viewModel: MainViewModel,
     onAddProject: () -> Unit,
     onOpenProject: (Long) -> Unit,
     initialClientFilterId: Long? = null,
     onClearClientFilter: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var filterClientId by remember(initialClientFilterId) { mutableStateOf(initialClientFilterId) }
-    var filterCategory by remember { mutableStateOf<VideoCategory?>(null) }
-    var filterType by remember { mutableStateOf<ProjectType?>(null) }
-    var filterPriority by remember { mutableStateOf<ProjectPriority?>(null) }
-    var filterPaymentStatus by remember { mutableStateOf<PaymentStatus?>(null) }
-    var filterProjectStatus by remember { mutableStateOf<ProjectStatus?>(null) }
-    var filterProjectDate by remember { mutableStateOf<Long?>(null) }
-    var filterDeadlineBefore by remember { mutableStateOf<Long?>(null) }
-    var onlyOverdue by remember { mutableStateOf(false) }
-
-    var sortOption by remember { mutableStateOf(ProjectSortOption.DATE_DESC) }
+    val projectsState by viewModel.projectsListState.collectAsStateWithLifecycle()
+    var searchText by remember(projectsState.query) { mutableStateOf(projectsState.query) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
+    var selectedClientName by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(initialClientFilterId) {
+        if (initialClientFilterId != null && projectsState.clientId != initialClientFilterId) {
+            viewModel.updateProjectFilter(clientId = initialClientFilterId)
+        }
+    }
+
+    LaunchedEffect(projectsState.clientId) {
+        selectedClientName = projectsState.clientId?.let { cid ->
+            viewModel.getClientFullSafe(cid)?.name
+        }
+    }
 
     val currency = uiState.settings.currencySymbol
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
 
     val activeFilterCount = listOfNotNull(
-        filterClientId,
-        filterCategory,
-        filterType,
-        filterPriority,
-        filterPaymentStatus,
-        filterProjectStatus,
-        filterProjectDate,
-        filterDeadlineBefore
-    ).size + if (onlyOverdue) 1 else 0
-
-    val filteredProjects = remember(
-        uiState.projectsWithClient,
-        searchQuery,
-        filterClientId,
-        filterCategory,
-        filterType,
-        filterPriority,
-        filterPaymentStatus,
-        filterProjectStatus,
-        filterProjectDate,
-        filterDeadlineBefore,
-        onlyOverdue,
-        sortOption
-    ) {
-        uiState.projectsWithClient
-            .filter { item ->
-                val p = item.project
-                val matchesQuery = searchQuery.isBlank() ||
-                    p.title.contains(searchQuery, ignoreCase = true) ||
-                    (item.clientName?.contains(searchQuery, ignoreCase = true) == true)
-                val matchesClient = filterClientId == null || p.clientId == filterClientId
-                val matchesCat = filterCategory == null || p.category == filterCategory!!.name
-                val matchesType = filterType == null || p.projectType == filterType!!.name
-                val matchesPriority = filterPriority == null || p.priority == filterPriority!!.name
-                val matchesPay = filterPaymentStatus == null || p.paymentStatus == filterPaymentStatus!!.name
-                val matchesStatus = filterProjectStatus == null || p.projectStatus == filterProjectStatus!!.name
-                val matchesDate = filterProjectDate == null || p.projectDateEpochDay == filterProjectDate
-                val matchesDeadline = filterDeadlineBefore == null ||
-                    (p.deadlineEpochDay != null && p.deadlineEpochDay <= filterDeadlineBefore!!)
-                val matchesOverdue = !onlyOverdue || item.isOverdue
-
-                matchesQuery && matchesClient && matchesCat && matchesType &&
-                    matchesPriority && matchesPay && matchesStatus &&
-                    matchesDate && matchesDeadline && matchesOverdue
-            }
-            .let { list ->
-                when (sortOption) {
-                    ProjectSortOption.DATE_DESC -> list.sortedByDescending { it.project.projectDateEpochDay }
-                    ProjectSortOption.DEADLINE_ASC -> list.sortedWith(
-                        compareBy<com.example.ui.state.ProjectWithClient> { it.project.deadlineEpochDay ?: Long.MAX_VALUE }
-                    )
-                    ProjectSortOption.AMOUNT_DESC -> list.sortedByDescending { it.project.projectAmount }
-                    ProjectSortOption.PRIORITY_DESC -> list.sortedByDescending {
-                        ProjectPriority.fromName(it.project.priority).sortWeight
-                    }
-                }
-            }
-    }
+        projectsState.clientId,
+        projectsState.category,
+        projectsState.projectType,
+        projectsState.priority,
+        projectsState.paymentStatus,
+        projectsState.projectStatus,
+        projectsState.exactDate,
+        projectsState.deadlineBefore
+    ).size + if (projectsState.onlyOverdue) 1 else 0
 
     LazyColumn(
         modifier = modifier
@@ -164,20 +125,26 @@ fun ProjectsScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
+        item(key = "projects_search_row") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    value = searchText,
+                    onValueChange = {
+                        searchText = it
+                        viewModel.updateProjectFilter(query = it)
+                    },
                     placeholder = { Text("Search projects...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                        if (searchText.isNotEmpty()) {
+                            IconButton(onClick = {
+                                searchText = ""
+                                viewModel.updateProjectFilter(query = "")
+                            }) {
                                 Icon(Icons.Default.Close, contentDescription = "Clear search")
                             }
                         }
@@ -200,7 +167,7 @@ fun ProjectsScreen(
             }
         }
 
-        item {
+        item(key = "projects_filter_row") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -223,15 +190,18 @@ fun ProjectsScreen(
                         }
                     )
                     FilterChip(
-                        selected = onlyOverdue,
-                        onClick = { onlyOverdue = !onlyOverdue },
+                        selected = projectsState.onlyOverdue,
+                        onClick = {
+                            viewModel.updateProjectFilter(onlyOverdue = !projectsState.onlyOverdue)
+                        },
                         label = { Text("Overdue") }
                     )
                     ProjectStatus.entries.forEach { st ->
                         FilterChip(
-                            selected = filterProjectStatus == st,
+                            selected = projectsState.projectStatus == st,
                             onClick = {
-                                filterProjectStatus = if (filterProjectStatus == st) null else st
+                                val next = if (projectsState.projectStatus == st) null else st
+                                viewModel.updateProjectFilter(projectStatus = next)
                             },
                             label = { Text(st.label) }
                         )
@@ -244,7 +214,7 @@ fun ProjectsScreen(
                             DropdownMenuItem(
                                 text = { Text(opt.label) },
                                 onClick = {
-                                    sortOption = opt
+                                    viewModel.updateProjectFilter(sortOption = opt)
                                     showSortMenu = false
                                 }
                             )
@@ -255,33 +225,32 @@ fun ProjectsScreen(
         }
 
         if (activeFilterCount > 0) {
-            item {
+            item(key = "projects_active_filters") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val clientLabel = filterClientId?.let { id ->
-                        uiState.clientsWithStats.firstOrNull { it.client.id == id }?.client?.name
-                    }
                     Text(
                         text = buildString {
-                            append("Showing ${filteredProjects.size} filtered project(s)")
-                            if (clientLabel != null) append(" · Client: $clientLabel")
+                            append("Showing ${projectsState.totalCount} filtered project(s)")
+                            if (!selectedClientName.isNullOrBlank()) append(" · Client: $selectedClientName")
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     TextButton(onClick = {
-                        filterClientId = null
-                        filterCategory = null
-                        filterType = null
-                        filterPriority = null
-                        filterPaymentStatus = null
-                        filterProjectStatus = null
-                        filterProjectDate = null
-                        filterDeadlineBefore = null
-                        onlyOverdue = false
+                        viewModel.updateProjectFilter(
+                            clientId = null,
+                            category = null,
+                            projectType = null,
+                            priority = null,
+                            paymentStatus = null,
+                            projectStatus = null,
+                            exactDate = null,
+                            deadlineBefore = null,
+                            onlyOverdue = false
+                        )
                         onClearClientFilter()
                     }) {
                         Text("Clear All")
@@ -290,23 +259,33 @@ fun ProjectsScreen(
             }
         }
 
-        if (filteredProjects.isEmpty()) {
-            item {
+        if (projectsState.items.isEmpty() && !projectsState.isLoading) {
+            item(key = "projects_empty") {
+                val hasNoProjectsAtAll = uiState.home.totalProjects == 0
                 EmptyStateCard(
                     icon = Icons.Default.FolderCopy,
-                    title = if (uiState.projectsWithClient.isEmpty()) "No projects available" else "No matching projects",
-                    subtitle = if (uiState.projectsWithClient.isEmpty()) {
+                    title = if (hasNoProjectsAtAll) "No projects available" else "No matching projects",
+                    subtitle = if (hasNoProjectsAtAll) {
                         "Create your first commissioned client project, portfolio video, or practice edit."
                     } else {
                         "Try clearing filters or adjusting your search."
                     },
-                    actionLabel = if (uiState.projectsWithClient.isEmpty()) "Add Project" else null,
+                    actionLabel = if (hasNoProjectsAtAll) "Add Project" else null,
                     actionTag = "projects_empty_add",
-                    onActionClick = if (uiState.projectsWithClient.isEmpty()) onAddProject else null
+                    onActionClick = if (hasNoProjectsAtAll) onAddProject else null
                 )
             }
         } else {
-            items(filteredProjects, key = { it.project.id }, contentType = { "project_card" }) { item ->
+            itemsIndexed(
+                items = projectsState.items,
+                key = { _, item -> item.project.id },
+                contentType = { _, _ -> "project_card" }
+            ) { index, item ->
+                if (index >= projectsState.items.lastIndex - 5 && projectsState.hasMore && !projectsState.isLoading) {
+                    LaunchedEffect(projectsState.items.size) {
+                        viewModel.loadMoreProjects()
+                    }
+                }
                 val p = item.project
                 StudioCard(
                     onClick = { onOpenProject(p.id) },
@@ -396,9 +375,29 @@ fun ProjectsScreen(
                 }
             }
         }
+
+        item(key = "projects_pagination") {
+            PaginationFooter(
+                shownCount = projectsState.items.size,
+                totalCount = projectsState.totalCount,
+                hasMore = projectsState.hasMore,
+                isLoading = projectsState.isLoading,
+                itemLabel = "projects",
+                onLoadMore = { viewModel.loadMoreProjects() }
+            )
+        }
     }
 
     if (showFilterDialog) {
+        var draftClientId by remember(projectsState.clientId) { mutableStateOf(projectsState.clientId) }
+        var draftClientLabel by remember(selectedClientName) { mutableStateOf(selectedClientName ?: "All Clients") }
+        var draftCategory by remember(projectsState.category) { mutableStateOf(projectsState.category) }
+        var draftType by remember(projectsState.projectType) { mutableStateOf(projectsState.projectType) }
+        var draftPriority by remember(projectsState.priority) { mutableStateOf(projectsState.priority) }
+        var draftPayStatus by remember(projectsState.paymentStatus) { mutableStateOf(projectsState.paymentStatus) }
+        var draftExactDate by remember(projectsState.exactDate) { mutableStateOf(projectsState.exactDate) }
+        var draftDeadlineBefore by remember(projectsState.deadlineBefore) { mutableStateOf(projectsState.deadlineBefore) }
+
         AlertDialog(
             onDismissRequest = { showFilterDialog = false },
             title = { Text("Filter Projects") },
@@ -407,72 +406,95 @@ fun ProjectsScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    val clientOptions = listOf<Pair<Long?, String>>(null to "All Clients") +
-                        uiState.clientsWithStats.map { it.client.id to it.client.name }
-                    DropdownSelectorField(
+                    SearchableEntityPickerField(
                         label = "Client",
-                        selectedLabel = clientOptions.firstOrNull { it.first == filterClientId }?.second ?: "All Clients",
-                        options = clientOptions,
-                        onOptionSelected = { filterClientId = it }
+                        selectedLabel = if (draftClientId == null) "All Clients" else draftClientLabel,
+                        noneOptionLabel = "All Clients",
+                        onSelectNone = {
+                            draftClientId = null
+                            draftClientLabel = "All Clients"
+                        },
+                        onSearch = { q ->
+                            viewModel.searchClientsForPicker(q).map {
+                                PickerItem(value = it.id, title = it.name, subtitle = it.platform)
+                            }
+                        },
+                        onItemSelected = { picked ->
+                            draftClientId = picked.value
+                            draftClientLabel = picked.title
+                        }
                     )
                     DropdownSelectorField(
                         label = "Category",
-                        selectedLabel = filterCategory?.label ?: "All Categories",
+                        selectedLabel = draftCategory?.label ?: "All Categories",
                         options = listOf<Pair<VideoCategory?, String>>(null to "All Categories") +
                             VideoCategory.entries.map { it to it.label },
-                        onOptionSelected = { filterCategory = it }
+                        onOptionSelected = { draftCategory = it }
                     )
                     DropdownSelectorField(
                         label = "Project Type",
-                        selectedLabel = filterType?.label ?: "All Types",
+                        selectedLabel = draftType?.label ?: "All Types",
                         options = listOf<Pair<ProjectType?, String>>(null to "All Types") +
                             ProjectType.entries.map { it to it.label },
-                        onOptionSelected = { filterType = it }
+                        onOptionSelected = { draftType = it }
                     )
                     DropdownSelectorField(
                         label = "Priority",
-                        selectedLabel = filterPriority?.label ?: "All Priorities",
+                        selectedLabel = draftPriority?.label ?: "All Priorities",
                         options = listOf<Pair<ProjectPriority?, String>>(null to "All Priorities") +
                             ProjectPriority.entries.map { it to it.label },
-                        onOptionSelected = { filterPriority = it }
+                        onOptionSelected = { draftPriority = it }
                     )
                     DropdownSelectorField(
                         label = "Payment Status",
-                        selectedLabel = filterPaymentStatus?.label ?: "All Payment Statuses",
+                        selectedLabel = draftPayStatus?.label ?: "All Payment Statuses",
                         options = listOf<Pair<PaymentStatus?, String>>(null to "All Payment Statuses") +
                             PaymentStatus.entries.map { it to it.label },
-                        onOptionSelected = { filterPaymentStatus = it }
+                        onOptionSelected = { draftPayStatus = it }
                     )
                     DatePickerField(
                         label = "Exact Project Date",
-                        epochDay = filterProjectDate,
+                        epochDay = draftExactDate,
                         dateFormat = dateFormat,
                         allowClear = true,
-                        onDateSelected = { filterProjectDate = it }
+                        onDateSelected = { draftExactDate = it }
                     )
                     DatePickerField(
                         label = "Deadline On or Before",
-                        epochDay = filterDeadlineBefore,
+                        epochDay = draftDeadlineBefore,
                         dateFormat = dateFormat,
                         allowClear = true,
-                        onDateSelected = { filterDeadlineBefore = it }
+                        onDateSelected = { draftDeadlineBefore = it }
                     )
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilterDialog = false }) { Text("Apply") }
+                Button(onClick = {
+                    viewModel.updateProjectFilter(
+                        clientId = draftClientId,
+                        category = draftCategory,
+                        projectType = draftType,
+                        priority = draftPriority,
+                        paymentStatus = draftPayStatus,
+                        exactDate = draftExactDate,
+                        deadlineBefore = draftDeadlineBefore
+                    )
+                    showFilterDialog = false
+                }) { Text("Apply") }
             },
             dismissButton = {
                 OutlinedButton(onClick = {
-                    filterClientId = null
-                    filterCategory = null
-                    filterType = null
-                    filterPriority = null
-                    filterPaymentStatus = null
-                    filterProjectStatus = null
-                    filterProjectDate = null
-                    filterDeadlineBefore = null
-                    onlyOverdue = false
+                    viewModel.updateProjectFilter(
+                        clientId = null,
+                        category = null,
+                        projectType = null,
+                        priority = null,
+                        paymentStatus = null,
+                        projectStatus = null,
+                        exactDate = null,
+                        deadlineBefore = null,
+                        onlyOverdue = false
+                    )
                     onClearClientFilter()
                     showFilterDialog = false
                 }) { Text("Reset") }

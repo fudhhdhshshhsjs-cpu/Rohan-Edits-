@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.dao.ExpenseSummaryRow
+import com.example.data.local.dao.IncomeSummaryRow
 import com.example.data.local.entity.ExpenseTransactionEntity
 import com.example.data.local.entity.IncomeTransactionEntity
 import com.example.data.model.DateFormatOption
@@ -63,6 +67,9 @@ import com.example.ui.components.DatePickerField
 import com.example.ui.components.DropdownSelectorField
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.MetricTile
+import com.example.ui.components.PaginationFooter
+import com.example.ui.components.PickerItem
+import com.example.ui.components.SearchableEntityPickerField
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
@@ -72,8 +79,7 @@ import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
 import com.example.ui.viewmodel.MainViewModel
 import com.example.util.Formatters
-import java.time.LocalDate
-import java.time.YearMonth
+import kotlinx.coroutines.launch
 
 @Composable
 fun BudgetScreen(
@@ -83,14 +89,19 @@ fun BudgetScreen(
     onConsumeInitialDialog: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val budgetState by viewModel.budgetListState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val today = uiState.today
     val currency = uiState.settings.currencySymbol
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
 
     var ledgerTab by remember { mutableStateOf("Income") }
-    var dateFilter by remember { mutableStateOf(FinancialDateFilter.ALL_TIME) }
-    var customStartEpoch by remember { mutableStateOf(today.withDayOfMonth(1).toEpochDay()) }
-    var customEndEpoch by remember { mutableStateOf(today.toEpochDay()) }
+    var customStartEpoch by remember(budgetState.customStartEpoch, today) {
+        mutableStateOf(budgetState.customStartEpoch ?: today.withDayOfMonth(1).toEpochDay())
+    }
+    var customEndEpoch by remember(budgetState.customEndEpoch, today) {
+        mutableStateOf(budgetState.customEndEpoch ?: today.toEpochDay())
+    }
     var showCustomRangeDialog by remember { mutableStateOf(false) }
 
     var editingIncome by remember { mutableStateOf<IncomeTransactionEntity?>(null) }
@@ -98,8 +109,8 @@ fun BudgetScreen(
     var editingExpense by remember { mutableStateOf<ExpenseTransactionEntity?>(null) }
     var showExpenseDialog by remember { mutableStateOf(false) }
 
-    var pendingDeleteIncome by remember { mutableStateOf<IncomeTransactionEntity?>(null) }
-    var pendingDeleteExpense by remember { mutableStateOf<ExpenseTransactionEntity?>(null) }
+    var pendingDeleteIncome by remember { mutableStateOf<IncomeSummaryRow?>(null) }
+    var pendingDeleteExpense by remember { mutableStateOf<ExpenseSummaryRow?>(null) }
 
     LaunchedEffect(initialDialogType) {
         when (initialDialogType) {
@@ -118,45 +129,6 @@ fun BudgetScreen(
         }
     }
 
-    val dateRange: Pair<Long, Long>? = remember(dateFilter, today, customStartEpoch, customEndEpoch) {
-        when (dateFilter) {
-            FinancialDateFilter.THIS_MONTH -> {
-                val ym = YearMonth.from(today)
-                ym.atDay(1).toEpochDay() to ym.atEndOfMonth().toEpochDay()
-            }
-            FinancialDateFilter.PREVIOUS_MONTH -> {
-                val ym = YearMonth.from(today).minusMonths(1)
-                ym.atDay(1).toEpochDay() to ym.atEndOfMonth().toEpochDay()
-            }
-            FinancialDateFilter.THIS_YEAR -> {
-                LocalDate.of(today.year, 1, 1).toEpochDay() to LocalDate.of(today.year, 12, 31).toEpochDay()
-            }
-            FinancialDateFilter.ALL_TIME -> null
-            FinancialDateFilter.CUSTOM -> {
-                minOf(customStartEpoch, customEndEpoch) to maxOf(customStartEpoch, customEndEpoch)
-            }
-        }
-    }
-
-    val filteredIncome = remember(uiState.incomeTransactions, dateRange) {
-        if (dateRange == null) uiState.incomeTransactions
-        else uiState.incomeTransactions.filter { it.dateEpochDay in dateRange.first..dateRange.second }
-    }
-    val filteredExpenses = remember(uiState.expenseTransactions, dateRange) {
-        if (dateRange == null) uiState.expenseTransactions
-        else uiState.expenseTransactions.filter { it.dateEpochDay in dateRange.first..dateRange.second }
-    }
-
-    // Period totals based on filter + Yearly totals for dashboard
-    val periodIncome = filteredIncome.sumOf { it.amount }
-    val periodExpenses = filteredExpenses.sumOf { it.amount }
-    val periodNet = periodIncome - periodExpenses
-
-    val yearStart = LocalDate.of(today.year, 1, 1).toEpochDay()
-    val yearEnd = LocalDate.of(today.year, 12, 31).toEpochDay()
-    val yearlyIncome = uiState.incomeTransactions.filter { it.dateEpochDay in yearStart..yearEnd }.sumOf { it.amount }
-    val yearlyExpenses = uiState.expenseTransactions.filter { it.dateEpochDay in yearStart..yearEnd }.sumOf { it.amount }
-
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -165,7 +137,7 @@ fun BudgetScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Financial Filter Chips
-        item {
+        item(key = "budget_filters") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -174,11 +146,12 @@ fun BudgetScreen(
             ) {
                 FinancialDateFilter.entries.forEach { filter ->
                     FilterChip(
-                        selected = dateFilter == filter,
+                        selected = budgetState.dateFilter == filter,
                         onClick = {
-                            dateFilter = filter
                             if (filter == FinancialDateFilter.CUSTOM) {
                                 showCustomRangeDialog = true
+                            } else {
+                                viewModel.updateBudgetFilter(dateFilter = filter)
                             }
                         },
                         label = { Text(filter.label) },
@@ -188,16 +161,16 @@ fun BudgetScreen(
             }
         }
 
-        // Financial Summary Cards
-        item {
+        // Financial Summary Cards (SQL-computed totals over unlimited rows)
+        item(key = "budget_summary") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     MetricTile(
-                        label = if (dateFilter == FinancialDateFilter.ALL_TIME) "Total Income" else "${dateFilter.label} Income",
-                        value = Formatters.formatCurrency(periodIncome, currency),
+                        label = if (budgetState.dateFilter == FinancialDateFilter.ALL_TIME) "Total Income" else "${budgetState.dateFilter.label} Income",
+                        value = Formatters.formatCurrency(budgetState.periodIncome, currency),
                         icon = Icons.Default.Payments,
                         accentColor = StatusGreen,
                         modifier = Modifier
@@ -205,8 +178,8 @@ fun BudgetScreen(
                             .testTag("budget_total_income")
                     )
                     MetricTile(
-                        label = if (dateFilter == FinancialDateFilter.ALL_TIME) "Total Expenses" else "${dateFilter.label} Expenses",
-                        value = Formatters.formatCurrency(periodExpenses, currency),
+                        label = if (budgetState.dateFilter == FinancialDateFilter.ALL_TIME) "Total Expenses" else "${budgetState.dateFilter.label} Expenses",
+                        value = Formatters.formatCurrency(budgetState.periodExpenses, currency),
                         icon = Icons.Default.ReceiptLong,
                         accentColor = StatusRed,
                         modifier = Modifier
@@ -220,10 +193,10 @@ fun BudgetScreen(
                 ) {
                     MetricTile(
                         label = "Net Balance",
-                        value = Formatters.formatCurrency(periodNet, currency),
+                        value = Formatters.formatCurrency(budgetState.periodNet, currency),
                         subtitle = "Income - Expenses",
                         icon = Icons.Default.AccountBalanceWallet,
-                        accentColor = if (periodNet >= 0) MaterialTheme.colorScheme.primary else StatusRed,
+                        accentColor = if (budgetState.periodNet >= 0) MaterialTheme.colorScheme.primary else StatusRed,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("budget_net_balance")
@@ -269,7 +242,7 @@ fun BudgetScreen(
                         Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                             Text("Year ${today.year}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                "+${Formatters.formatCurrency(yearlyIncome, currency)}",
+                                "+${Formatters.formatCurrency(budgetState.yearlyIncome, currency)}",
                                 style = MaterialTheme.typography.titleSmall.copy(
                                     fontFamily = InterFontFamily,
                                     fontWeight = FontWeight.Bold,
@@ -278,7 +251,7 @@ fun BudgetScreen(
                                 color = StatusGreen
                             )
                             Text(
-                                "-${Formatters.formatCurrency(yearlyExpenses, currency)}",
+                                "-${Formatters.formatCurrency(budgetState.yearlyExpenses, currency)}",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = InterFontFamily,
                                     fontFeatureSettings = "tnum"
@@ -292,7 +265,7 @@ fun BudgetScreen(
         }
 
         // Action Buttons
-        item {
+        item(key = "budget_actions") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -329,7 +302,7 @@ fun BudgetScreen(
         }
 
         // Income / Expenses Switcher
-        item {
+        item(key = "budget_tabs") {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = ledgerTab == "Income",
@@ -337,7 +310,7 @@ fun BudgetScreen(
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                     modifier = Modifier.testTag("budget_tab_income")
                 ) {
-                    Text("Income (${filteredIncome.size})")
+                    Text("Income (${budgetState.incomeTotalCount})")
                 }
                 SegmentedButton(
                     selected = ledgerTab == "Expenses",
@@ -345,14 +318,14 @@ fun BudgetScreen(
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                     modifier = Modifier.testTag("budget_tab_expenses")
                 ) {
-                    Text("Expenses (${filteredExpenses.size})")
+                    Text("Expenses (${budgetState.expenseTotalCount})")
                 }
             }
         }
 
         if (ledgerTab == "Income") {
-            if (filteredIncome.isEmpty()) {
-                item {
+            if (budgetState.incomeItems.isEmpty() && !budgetState.isLoading) {
+                item(key = "budget_income_empty") {
                     EmptyStateCard(
                         icon = Icons.Default.Payments,
                         title = "No income records found",
@@ -366,7 +339,16 @@ fun BudgetScreen(
                     )
                 }
             } else {
-                items(filteredIncome, key = { it.id }, contentType = { "income_card" }) { tx ->
+                itemsIndexed(
+                    items = budgetState.incomeItems,
+                    key = { _, tx -> tx.id },
+                    contentType = { _, _ -> "income_card" }
+                ) { index, tx ->
+                    if (index >= budgetState.incomeItems.lastIndex - 5 && budgetState.incomeHasMore && !budgetState.isLoading) {
+                        LaunchedEffect(budgetState.incomeItems.size) {
+                            viewModel.loadMoreBudgetIncome()
+                        }
+                    }
                     StudioCard(modifier = Modifier.testTag("income_card_${tx.id}")) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -393,9 +375,9 @@ fun BudgetScreen(
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (tx.notes.isNotBlank()) {
+                                if (tx.notesPreview.isNotBlank()) {
                                     Text(
-                                        text = tx.notes,
+                                        text = tx.notesPreview,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 3,
@@ -417,8 +399,13 @@ fun BudgetScreen(
                                 Row {
                                     IconButton(
                                         onClick = {
-                                            editingIncome = tx
-                                            showIncomeDialog = true
+                                            scope.launch {
+                                                val full = viewModel.getIncomeByIdOnce(tx.id)
+                                                if (full != null) {
+                                                    editingIncome = full
+                                                    showIncomeDialog = true
+                                                }
+                                            }
                                         }
                                     ) {
                                         Icon(Icons.Default.Edit, contentDescription = "Edit income", modifier = Modifier.size(18.dp))
@@ -444,10 +431,20 @@ fun BudgetScreen(
                         }
                     }
                 }
+                item(key = "budget_income_pagination") {
+                    PaginationFooter(
+                        shownCount = budgetState.incomeItems.size,
+                        totalCount = budgetState.incomeTotalCount,
+                        hasMore = budgetState.incomeHasMore,
+                        isLoading = budgetState.isLoading,
+                        itemLabel = "income entries",
+                        onLoadMore = { viewModel.loadMoreBudgetIncome() }
+                    )
+                }
             }
         } else {
-            if (filteredExpenses.isEmpty()) {
-                item {
+            if (budgetState.expenseItems.isEmpty() && !budgetState.isLoading) {
+                item(key = "budget_expenses_empty") {
                     EmptyStateCard(
                         icon = Icons.Default.ReceiptLong,
                         title = "No expenses recorded",
@@ -461,7 +458,16 @@ fun BudgetScreen(
                     )
                 }
             } else {
-                items(filteredExpenses, key = { it.id }, contentType = { "expense_card" }) { ex ->
+                itemsIndexed(
+                    items = budgetState.expenseItems,
+                    key = { _, ex -> ex.id },
+                    contentType = { _, _ -> "expense_card" }
+                ) { index, ex ->
+                    if (index >= budgetState.expenseItems.lastIndex - 5 && budgetState.expenseHasMore && !budgetState.isLoading) {
+                        LaunchedEffect(budgetState.expenseItems.size) {
+                            viewModel.loadMoreBudgetExpenses()
+                        }
+                    }
                     StudioCard(modifier = Modifier.testTag("expense_card_${ex.id}")) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -487,9 +493,9 @@ fun BudgetScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (ex.notes.isNotBlank()) {
+                                if (ex.notesPreview.isNotBlank()) {
                                     Text(
-                                        text = ex.notes,
+                                        text = ex.notesPreview,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 3,
@@ -511,8 +517,13 @@ fun BudgetScreen(
                                 Row {
                                     IconButton(
                                         onClick = {
-                                            editingExpense = ex
-                                            showExpenseDialog = true
+                                            scope.launch {
+                                                val full = viewModel.getExpenseByIdOnce(ex.id)
+                                                if (full != null) {
+                                                    editingExpense = full
+                                                    showExpenseDialog = true
+                                                }
+                                            }
                                         }
                                     ) {
                                         Icon(Icons.Default.Edit, contentDescription = "Edit expense", modifier = Modifier.size(18.dp))
@@ -537,6 +548,16 @@ fun BudgetScreen(
                             }
                         }
                     }
+                }
+                item(key = "budget_expenses_pagination") {
+                    PaginationFooter(
+                        shownCount = budgetState.expenseItems.size,
+                        totalCount = budgetState.expenseTotalCount,
+                        hasMore = budgetState.expenseHasMore,
+                        isLoading = budgetState.isLoading,
+                        itemLabel = "expense entries",
+                        onLoadMore = { viewModel.loadMoreBudgetExpenses() }
+                    )
                 }
             }
         }
@@ -563,7 +584,14 @@ fun BudgetScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showCustomRangeDialog = false }) { Text("Apply") }
+                Button(onClick = {
+                    viewModel.updateBudgetFilter(
+                        dateFilter = FinancialDateFilter.CUSTOM,
+                        customStartEpoch = customStartEpoch,
+                        customEndEpoch = customEndEpoch
+                    )
+                    showCustomRangeDialog = false
+                }) { Text("Apply") }
             }
         )
     }
@@ -572,6 +600,7 @@ fun BudgetScreen(
         IncomeFormDialog(
             existing = editingIncome,
             uiState = uiState,
+            viewModel = viewModel,
             onSave = { tx ->
                 viewModel.saveIncome(tx) { showIncomeDialog = false }
             },
@@ -619,6 +648,7 @@ fun BudgetScreen(
 private fun IncomeFormDialog(
     existing: IncomeTransactionEntity?,
     uiState: MainUiState,
+    viewModel: MainViewModel,
     onSave: (IncomeTransactionEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -627,7 +657,9 @@ private fun IncomeFormDialog(
 
     var source by remember { mutableStateOf(existing?.source.orEmpty()) }
     var selectedClientId by remember { mutableStateOf(existing?.clientId) }
+    var selectedClientLabel by remember { mutableStateOf(existing?.clientNameSnapshot?.ifBlank { "No Client" } ?: "No Client") }
     var selectedProjectId by remember { mutableStateOf(existing?.projectId) }
+    var selectedProjectLabel by remember { mutableStateOf(existing?.projectTitleSnapshot?.ifBlank { "No Linked Project" } ?: "No Linked Project") }
     var amountText by remember {
         mutableStateOf(
             existing?.amount?.let {
@@ -640,10 +672,19 @@ private fun IncomeFormDialog(
     var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val clientOptions = listOf<Pair<Long?, String>>(null to "No Client") +
-        uiState.clientsWithStats.map { it.client.id to it.client.name }
-    val projectOptions = listOf<Pair<Long?, String>>(null to "No Linked Project") +
-        uiState.projectsWithClient.map { it.project.id to it.project.title }
+    LaunchedEffect(selectedClientId) {
+        val cid = selectedClientId
+        if (cid != null && selectedClientLabel == "No Client") {
+            selectedClientLabel = viewModel.getClientFullSafe(cid)?.name ?: "Client #$cid"
+        }
+    }
+
+    LaunchedEffect(selectedProjectId) {
+        val pid = selectedProjectId
+        if (pid != null && selectedProjectLabel == "No Linked Project") {
+            selectedProjectLabel = viewModel.getProjectFullSafe(pid)?.title ?: "Project #$pid"
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -663,23 +704,53 @@ private fun IncomeFormDialog(
                         .fillMaxWidth()
                         .testTag("income_source_input")
                 )
-                DropdownSelectorField(
+                SearchableEntityPickerField(
                     label = "Client (Optional)",
-                    selectedLabel = clientOptions.firstOrNull { it.first == selectedClientId }?.second ?: "No Client",
-                    options = clientOptions,
-                    onOptionSelected = { selectedClientId = it }
-                )
-                DropdownSelectorField(
-                    label = "Related Project (Optional)",
-                    selectedLabel = projectOptions.firstOrNull { it.first == selectedProjectId }?.second ?: "No Linked Project",
-                    options = projectOptions,
-                    onOptionSelected = { pid ->
-                        selectedProjectId = pid
-                        val proj = uiState.projectsWithClient.firstOrNull { it.project.id == pid }
-                        if (proj != null) {
-                            if (selectedClientId == null) selectedClientId = proj.project.clientId
-                            if (source.isBlank()) source = "Payment: ${proj.project.title}"
+                    selectedLabel = if (selectedClientId == null) "No Client" else selectedClientLabel,
+                    noneOptionLabel = "No Client",
+                    onSelectNone = {
+                        selectedClientId = null
+                        selectedClientLabel = "No Client"
+                    },
+                    onSearch = { q ->
+                        viewModel.searchClientsForPicker(q).map {
+                            PickerItem(value = it.id, title = it.name, subtitle = it.platform)
                         }
+                    },
+                    onItemSelected = { picked ->
+                        selectedClientId = picked.value
+                        selectedClientLabel = picked.title
+                    }
+                )
+                SearchableEntityPickerField(
+                    label = "Related Project (Optional)",
+                    selectedLabel = if (selectedProjectId == null) "No Linked Project" else selectedProjectLabel,
+                    noneOptionLabel = "No Linked Project",
+                    onSelectNone = {
+                        selectedProjectId = null
+                        selectedProjectLabel = "No Linked Project"
+                    },
+                    onSearch = { q ->
+                        viewModel.searchProjectsForPicker(q, selectedClientId).map { p ->
+                            PickerItem(
+                                value = p,
+                                title = p.title,
+                                subtitle = buildString {
+                                    if (!p.clientName.isNullOrBlank()) append("${p.clientName} · ")
+                                    append("Paid ${Formatters.formatCurrency(p.amountPaid, currency)} / ${Formatters.formatCurrency(p.projectAmount, currency)}")
+                                }
+                            )
+                        }
+                    },
+                    onItemSelected = { picked ->
+                        val p = picked.value
+                        selectedProjectId = p.id
+                        selectedProjectLabel = p.title
+                        if (selectedClientId == null && p.clientId != null) {
+                            selectedClientId = p.clientId
+                            selectedClientLabel = p.clientName ?: "Client #${p.clientId}"
+                        }
+                        if (source.isBlank()) source = "Payment: ${p.title}"
                     }
                 )
                 OutlinedTextField(
@@ -734,8 +805,8 @@ private fun IncomeFormDialog(
                             source = source.trim(),
                             clientId = selectedClientId,
                             projectId = selectedProjectId,
-                            clientNameSnapshot = existing?.clientNameSnapshot.orEmpty(),
-                            projectTitleSnapshot = existing?.projectTitleSnapshot.orEmpty(),
+                            clientNameSnapshot = if (selectedClientId != null) selectedClientLabel else existing?.clientNameSnapshot.orEmpty(),
+                            projectTitleSnapshot = if (selectedProjectId != null) selectedProjectLabel else existing?.projectTitleSnapshot.orEmpty(),
                             amount = amt,
                             dateEpochDay = dateEpoch,
                             paymentMethod = method.name,

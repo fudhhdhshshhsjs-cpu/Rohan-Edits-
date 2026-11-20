@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -36,6 +36,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,21 +47,25 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.ClientSortOption
 import com.example.data.model.ClientType
 import com.example.data.model.PlatformType
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.PaginationFooter
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
+import com.example.ui.viewmodel.MainViewModel
 import com.example.util.Formatters
 
 @Composable
 fun ClientsHubScreen(
     uiState: MainUiState,
+    viewModel: MainViewModel,
     showProjectsTab: Boolean,
     onTabChange: (Boolean) -> Unit,
     onAddClient: () -> Unit,
@@ -83,7 +88,7 @@ fun ClientsHubScreen(
                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                 modifier = Modifier.testTag("hub_tab_clients")
             ) {
-                Text("Clients (${uiState.clientsWithStats.size})")
+                Text("Clients (${uiState.home.totalClients})")
             }
             SegmentedButton(
                 selected = showProjectsTab,
@@ -91,13 +96,14 @@ fun ClientsHubScreen(
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                 modifier = Modifier.testTag("hub_tab_projects")
             ) {
-                Text("Projects (${uiState.projectsWithClient.size})")
+                Text("Projects (${uiState.home.totalProjects})")
             }
         }
 
         if (showProjectsTab) {
             ProjectsScreen(
                 uiState = uiState,
+                viewModel = viewModel,
                 initialClientFilterId = initialClientFilterId,
                 onClearClientFilter = onClearClientFilter,
                 onAddProject = onAddProject,
@@ -106,6 +112,7 @@ fun ClientsHubScreen(
         } else {
             ClientsListContent(
                 uiState = uiState,
+                viewModel = viewModel,
                 onAddClient = onAddClient,
                 onOpenClient = onOpenClient
             )
@@ -116,32 +123,15 @@ fun ClientsHubScreen(
 @Composable
 private fun ClientsListContent(
     uiState: MainUiState,
+    viewModel: MainViewModel,
     onAddClient: () -> Unit,
     onOpenClient: (Long) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf<ClientType?>(null) }
-    var sortOption by remember { mutableStateOf(ClientSortOption.RECENT_ACTIVITY) }
+    val clientsState by viewModel.clientsListState.collectAsStateWithLifecycle()
+    var searchText by remember(clientsState.query) { mutableStateOf(clientsState.query) }
     var showSortMenu by remember { mutableStateOf(false) }
 
     val currency = uiState.settings.currencySymbol
-
-    val filteredClients = remember(uiState.clientsWithStats, searchQuery, selectedType, sortOption) {
-        uiState.clientsWithStats
-            .filter { item ->
-                val matchesSearch = searchQuery.isBlank() ||
-                    item.client.name.contains(searchQuery, ignoreCase = true) ||
-                    item.client.preferredEditingStyle.contains(searchQuery, ignoreCase = true)
-                val matchesType = selectedType == null || item.client.clientType == selectedType!!.name
-                matchesSearch && matchesType
-            }
-            .let { list ->
-                when (sortOption) {
-                    ClientSortOption.NAME -> list.sortedBy { it.client.name.lowercase() }
-                    ClientSortOption.RECENT_ACTIVITY -> list.sortedByDescending { it.lastActivityMillis }
-                }
-            }
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -150,20 +140,26 @@ private fun ClientsListContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
+        item(key = "clients_search_row") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    value = searchText,
+                    onValueChange = {
+                        searchText = it
+                        viewModel.updateClientFilter(query = it)
+                    },
                     placeholder = { Text("Search clients...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                        if (searchText.isNotEmpty()) {
+                            IconButton(onClick = {
+                                searchText = ""
+                                viewModel.updateClientFilter(query = "")
+                            }) {
                                 Icon(Icons.Default.Close, contentDescription = "Clear search")
                             }
                         }
@@ -186,7 +182,7 @@ private fun ClientsListContent(
             }
         }
 
-        item {
+        item(key = "clients_filter_row") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -199,14 +195,17 @@ private fun ClientsListContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
-                        selected = selectedType == null,
-                        onClick = { selectedType = null },
+                        selected = clientsState.clientType == null,
+                        onClick = { viewModel.updateClientFilter(clientType = null) },
                         label = { Text("All") }
                     )
                     ClientType.entries.forEach { type ->
                         FilterChip(
-                            selected = selectedType == type,
-                            onClick = { selectedType = if (selectedType == type) null else type },
+                            selected = clientsState.clientType == type,
+                            onClick = {
+                                val next = if (clientsState.clientType == type) null else type
+                                viewModel.updateClientFilter(clientType = next)
+                            },
                             label = { Text(type.label) }
                         )
                     }
@@ -215,13 +214,13 @@ private fun ClientsListContent(
                 TextButton(onClick = { showSortMenu = true }) {
                     Icon(Icons.Default.Sort, contentDescription = "Sort clients", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (sortOption == ClientSortOption.NAME) "Name" else "Recent")
+                    Text(if (clientsState.sortOption == ClientSortOption.NAME) "Name" else "Recent")
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                         ClientSortOption.entries.forEach { opt ->
                             DropdownMenuItem(
                                 text = { Text(opt.label) },
                                 onClick = {
-                                    sortOption = opt
+                                    viewModel.updateClientFilter(sortOption = opt)
                                     showSortMenu = false
                                 }
                             )
@@ -231,23 +230,33 @@ private fun ClientsListContent(
             }
         }
 
-        if (filteredClients.isEmpty()) {
-            item {
+        if (clientsState.items.isEmpty() && !clientsState.isLoading) {
+            item(key = "clients_empty") {
+                val hasNoClientsAtAll = uiState.home.totalClients == 0
                 EmptyStateCard(
                     icon = Icons.Default.Group,
-                    title = if (uiState.clientsWithStats.isEmpty()) "No clients added yet" else "No matching clients",
-                    subtitle = if (uiState.clientsWithStats.isEmpty()) {
+                    title = if (hasNoClientsAtAll) "No clients added yet" else "No matching clients",
+                    subtitle = if (hasNoClientsAtAll) {
                         "Add your first editing client to track projects, per-video rates, and pending payments."
                     } else {
                         "Try adjusting your search or filter criteria."
                     },
-                    actionLabel = if (uiState.clientsWithStats.isEmpty()) "Add Client" else null,
+                    actionLabel = if (hasNoClientsAtAll) "Add Client" else null,
                     actionTag = "clients_empty_add",
-                    onActionClick = if (uiState.clientsWithStats.isEmpty()) onAddClient else null
+                    onActionClick = if (hasNoClientsAtAll) onAddClient else null
                 )
             }
         } else {
-            items(filteredClients, key = { it.client.id }, contentType = { "client_card" }) { item ->
+            itemsIndexed(
+                items = clientsState.items,
+                key = { _, item -> item.client.id },
+                contentType = { _, _ -> "client_card" }
+            ) { index, item ->
+                if (index >= clientsState.items.lastIndex - 5 && clientsState.hasMore && !clientsState.isLoading) {
+                    LaunchedEffect(clientsState.items.size) {
+                        viewModel.loadMoreClients()
+                    }
+                }
                 val client = item.client
                 val platform = PlatformType.fromName(client.platform)
                 val type = ClientType.fromName(client.clientType)
@@ -327,6 +336,17 @@ private fun ClientsListContent(
                     }
                 }
             }
+        }
+
+        item(key = "clients_pagination") {
+            PaginationFooter(
+                shownCount = clientsState.items.size,
+                totalCount = clientsState.totalCount,
+                hasMore = clientsState.hasMore,
+                isLoading = clientsState.isLoading,
+                itemLabel = "clients",
+                onLoadMore = { viewModel.loadMoreClients() }
+            )
         }
     }
 }

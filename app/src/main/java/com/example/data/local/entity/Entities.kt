@@ -6,6 +6,9 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.data.model.CalendarStatus
 import com.example.data.model.DateFormatOption
+import com.example.data.model.GoalMetric
+import com.example.data.model.GoalStatus
+import com.example.data.model.NoteCategory
 import com.example.data.model.ThemeMode
 import com.example.util.DEFAULT_JOURNEY_START_DATE
 
@@ -63,7 +66,12 @@ data class ClientEntity(
         Index(value = ["projectStatus"]),
         Index(value = ["paymentStatus"]),
         Index(value = ["projectDateEpochDay"]),
-        Index(value = ["deadlineEpochDay"])
+        Index(value = ["deadlineEpochDay"]),
+        Index(value = ["projectStatus", "projectDateEpochDay"]),
+        Index(value = ["projectStatus", "projectAmount", "amountPaid"]),
+        Index(value = ["clientId", "projectStatus"]),
+        Index(value = ["category", "projectStatus", "projectDateEpochDay"]),
+        Index(value = ["title"])
     ]
 )
 data class ProjectEntity(
@@ -87,7 +95,12 @@ data class ProjectEntity(
     val updatedAtMillis: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "calendar_days")
+@Entity(
+    tableName = "calendar_days",
+    indices = [
+        Index(value = ["dateEpochDay", "status"])
+    ]
+)
 data class CalendarDayEntity(
     @PrimaryKey val dateEpochDay: Long,
     val status: String = CalendarStatus.NOT_MARKED.name,
@@ -114,7 +127,10 @@ data class CalendarDayEntity(
     indices = [
         Index(value = ["clientId"]),
         Index(value = ["projectId"]),
-        Index(value = ["dateEpochDay"])
+        Index(value = ["dateEpochDay"]),
+        Index(value = ["dateEpochDay", "amount"]),
+        Index(value = ["clientId", "amount"]),
+        Index(value = ["projectId", "amount"])
     ]
 )
 data class IncomeTransactionEntity(
@@ -135,7 +151,8 @@ data class IncomeTransactionEntity(
     tableName = "expense_transactions",
     indices = [
         Index(value = ["category"]),
-        Index(value = ["dateEpochDay"])
+        Index(value = ["dateEpochDay"]),
+        Index(value = ["dateEpochDay", "amount"])
     ]
 )
 data class ExpenseTransactionEntity(
@@ -156,4 +173,92 @@ data class AppSettingsEntity(
     val currencySymbol: String = "₹",
     val confirmBeforeDelete: Boolean = true,
     val deadlineRemindersEnabled: Boolean = false
+)
+
+@Entity(
+    tableName = "notes",
+    foreignKeys = [
+        ForeignKey(
+            entity = ClientEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["clientId"],
+            onDelete = ForeignKey.SET_NULL
+        ),
+        ForeignKey(
+            entity = ProjectEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [
+        Index(value = ["isPinned", "updatedAtMillis"]),
+        Index(value = ["category"]),
+        Index(value = ["clientId"]),
+        Index(value = ["projectId"]),
+        Index(value = ["title"])
+    ]
+)
+data class NoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val content: String = "",
+    val category: String = NoteCategory.GENERAL.name,
+    val clientId: Long? = null,
+    val projectId: Long? = null,
+    val isPinned: Boolean = false,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "project_revisions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProjectEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["projectId", "versionNumber"]),
+        Index(value = ["projectId", "createdAtMillis"])
+    ]
+)
+data class ProjectRevisionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val projectId: Long,
+    val versionNumber: Int = 1,
+    val summary: String,
+    val instructionsSnapshot: String = "",
+    val statusSnapshot: String = "",
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "career_goals",
+    indices = [
+        Index(value = ["status", "deadlineEpochDay"]),
+        Index(value = ["updatedAtMillis"])
+    ]
+)
+data class CareerGoalEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val description: String = "",
+    val targetMetric: String = GoalMetric.CUSTOM.name,
+    val currentValue: Double = 0.0,
+    val targetValue: Double = 1.0,
+    val deadlineEpochDay: Long? = null,
+    val status: String = GoalStatus.ACTIVE.name,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "form_drafts")
+data class FormDraftEntity(
+    @PrimaryKey val draftKey: String,
+    val payloadJson: String,
+    val updatedAtMillis: Long = System.currentTimeMillis()
 )

@@ -21,7 +21,7 @@ class AppContainer(
         AppDatabase.create(context)
     }
     val preferencesDataStore: PreferencesDataStore = PreferencesDataStore(context)
-    val draftManager: DraftManager = DraftManager(context.applicationContext)
+    val draftManager: DraftManager = DraftManager(context.applicationContext, database.formDraftDao())
     val repository: CareerRepository = CareerRepository(database, preferencesDataStore)
     val backupExportManager: BackupExportManager = BackupExportManager()
 }

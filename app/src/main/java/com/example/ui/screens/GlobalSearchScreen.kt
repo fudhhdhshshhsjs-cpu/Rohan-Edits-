@@ -1,19 +1,20 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,8 +31,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.ClientType
 import com.example.data.model.DateFormatOption
+import com.example.data.model.GoalStatus
+import com.example.data.model.NoteCategory
 import com.example.data.model.ProjectStatus
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ProjectStatusBadge
@@ -51,12 +55,12 @@ fun GlobalSearchScreen(
     onOpenClient: (Long) -> Unit,
     onOpenProject: (Long) -> Unit,
     onOpenBudget: () -> Unit,
+    onOpenNotes: () -> Unit = {},
+    onOpenGoals: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var query by remember { mutableStateOf("") }
-    val results = remember(query, uiState) {
-        viewModel.searchAll(query, uiState)
-    }
+    val searchState by viewModel.globalSearchState.collectAsStateWithLifecycle()
+    var query by remember(searchState.query) { mutableStateOf(searchState.query) }
     val currency = uiState.settings.currencySymbol
     val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
 
@@ -67,12 +71,18 @@ fun GlobalSearchScreen(
     ) {
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
-            placeholder = { Text("Search clients, projects, income, expenses...") },
+            onValueChange = {
+                query = it
+                viewModel.updateGlobalSearch(it)
+            },
+            placeholder = { Text("Search clients, projects, income, expenses, notes, goals...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) {
+                    IconButton(onClick = {
+                        query = ""
+                        viewModel.updateGlobalSearch("")
+                    }) {
                         Icon(Icons.Default.Close, contentDescription = "Clear")
                     }
                 }
@@ -89,20 +99,24 @@ fun GlobalSearchScreen(
                 EmptyStateCard(
                     icon = Icons.Default.Search,
                     title = "Global Search",
-                    subtitle = "Type to search across all saved clients, video projects, income entries, and expenses."
+                    subtitle = "Search directly across SQLite tables for clients, projects, transactions, notes, and career goals."
                 )
             }
-        } else if (
-            results.clients.isEmpty() &&
-            results.projects.isEmpty() &&
-            results.income.isEmpty() &&
-            results.expenses.isEmpty()
-        ) {
+        } else if (searchState.isSearching && searchState.isEmptyResults) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            }
+        } else if (searchState.isEmptyResults) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 EmptyStateCard(
                     icon = Icons.Default.Search,
                     title = "No results for \"$query\"",
-                    subtitle = "Try a different client name, project title, or transaction keyword."
+                    subtitle = "Try a different client name, project title, note keyword, or transaction description."
                 )
             }
         } else {
@@ -110,9 +124,11 @@ fun GlobalSearchScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (results.clients.isNotEmpty()) {
-                    item(key = "header_clients", contentType = "header") { SectionHeader(title = "Clients (${results.clients.size})") }
-                    items(results.clients, key = { "c_${it.client.id}" }, contentType = { "client" }) { c ->
+                if (searchState.clients.isNotEmpty()) {
+                    item(key = "header_clients", contentType = "header") {
+                        SectionHeader(title = "Clients (${searchState.clientsTotal})")
+                    }
+                    items(searchState.clients, key = { "c_${it.client.id}" }, contentType = { "client" }) { c ->
                         StudioCard(onClick = { onOpenClient(c.client.id) }) {
                             Text(
                                 text = c.client.name,
@@ -130,9 +146,11 @@ fun GlobalSearchScreen(
                     }
                 }
 
-                if (results.projects.isNotEmpty()) {
-                    item(key = "header_projects", contentType = "header") { SectionHeader(title = "Projects (${results.projects.size})") }
-                    items(results.projects, key = { "p_${it.project.id}" }, contentType = { "project" }) { p ->
+                if (searchState.projects.isNotEmpty()) {
+                    item(key = "header_projects", contentType = "header") {
+                        SectionHeader(title = "Projects (${searchState.projectsTotal})")
+                    }
+                    items(searchState.projects, key = { "p_${it.project.id}" }, contentType = { "project" }) { p ->
                         StudioCard(onClick = { onOpenProject(p.project.id) }) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -161,9 +179,11 @@ fun GlobalSearchScreen(
                     }
                 }
 
-                if (results.income.isNotEmpty()) {
-                    item(key = "header_income", contentType = "header") { SectionHeader(title = "Income (${results.income.size})") }
-                    items(results.income, key = { "i_${it.id}" }, contentType = { "income" }) { tx ->
+                if (searchState.income.isNotEmpty()) {
+                    item(key = "header_income", contentType = "header") {
+                        SectionHeader(title = "Income (${searchState.incomeTotal})")
+                    }
+                    items(searchState.income, key = { "i_${it.id}" }, contentType = { "income" }) { tx ->
                         StudioCard(onClick = onOpenBudget) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -177,7 +197,11 @@ fun GlobalSearchScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(Formatters.formatDate(tx.dateEpochDay, dateFormat), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        Formatters.formatDate(tx.dateEpochDay, dateFormat),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                                 Text(
                                     "+${Formatters.formatCurrency(tx.amount, currency)}",
@@ -193,9 +217,11 @@ fun GlobalSearchScreen(
                     }
                 }
 
-                if (results.expenses.isNotEmpty()) {
-                    item(key = "header_expenses", contentType = "header") { SectionHeader(title = "Expenses (${results.expenses.size})") }
-                    items(results.expenses, key = { "e_${it.id}" }, contentType = { "expense" }) { ex ->
+                if (searchState.expenses.isNotEmpty()) {
+                    item(key = "header_expenses", contentType = "header") {
+                        SectionHeader(title = "Expenses (${searchState.expensesTotal})")
+                    }
+                    items(searchState.expenses, key = { "e_${it.id}" }, contentType = { "expense" }) { ex ->
                         StudioCard(onClick = onOpenBudget) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -209,7 +235,11 @@ fun GlobalSearchScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(Formatters.formatDate(ex.dateEpochDay, dateFormat), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        Formatters.formatDate(ex.dateEpochDay, dateFormat),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                                 Text(
                                     "-${Formatters.formatCurrency(ex.amount, currency)}",
@@ -221,6 +251,50 @@ fun GlobalSearchScreen(
                                     color = StatusRed
                                 )
                             }
+                        }
+                    }
+                }
+
+                if (searchState.notes.isNotEmpty()) {
+                    item(key = "header_notes", contentType = "header") {
+                        SectionHeader(title = "Notes (${searchState.notesTotal})")
+                    }
+                    items(searchState.notes, key = { "n_${it.id}" }, contentType = { "note" }) { n ->
+                        StudioCard(onClick = onOpenNotes) {
+                            Text(
+                                text = n.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${NoteCategory.fromName(n.category).label} · ${n.contentLength} chars",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                if (searchState.goals.isNotEmpty()) {
+                    item(key = "header_goals", contentType = "header") {
+                        SectionHeader(title = "Career Goals (${searchState.goalsTotal})")
+                    }
+                    items(searchState.goals, key = { "g_${it.id}" }, contentType = { "goal" }) { g ->
+                        StudioCard(onClick = onOpenGoals) {
+                            Text(
+                                text = g.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = GoalStatus.fromName(g.status).label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
