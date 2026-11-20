@@ -1,0 +1,836 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.example.data.local.entity.ExpenseTransactionEntity
+import com.example.data.local.entity.IncomeTransactionEntity
+import com.example.data.model.DateFormatOption
+import com.example.data.model.ExpenseCategory
+import com.example.data.model.FinancialDateFilter
+import com.example.data.model.PaymentMethod
+import com.example.ui.components.ConfirmDeleteDialog
+import com.example.ui.components.DatePickerField
+import com.example.ui.components.DropdownSelectorField
+import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.MetricTile
+import com.example.ui.components.StatusPill
+import com.example.ui.components.StudioCard
+import com.example.ui.state.MainUiState
+import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.StatusAmber
+import com.example.ui.theme.StatusGreen
+import com.example.ui.theme.StatusRed
+import com.example.ui.viewmodel.MainViewModel
+import com.example.util.Formatters
+import java.time.LocalDate
+import java.time.YearMonth
+
+@Composable
+fun BudgetScreen(
+    uiState: MainUiState,
+    viewModel: MainViewModel,
+    initialDialogType: String? = null,
+    onConsumeInitialDialog: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val today = uiState.today
+    val currency = uiState.settings.currencySymbol
+    val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
+
+    var ledgerTab by remember { mutableStateOf("Income") }
+    var dateFilter by remember { mutableStateOf(FinancialDateFilter.ALL_TIME) }
+    var customStartEpoch by remember { mutableStateOf(today.withDayOfMonth(1).toEpochDay()) }
+    var customEndEpoch by remember { mutableStateOf(today.toEpochDay()) }
+    var showCustomRangeDialog by remember { mutableStateOf(false) }
+
+    var editingIncome by remember { mutableStateOf<IncomeTransactionEntity?>(null) }
+    var showIncomeDialog by remember { mutableStateOf(false) }
+    var editingExpense by remember { mutableStateOf<ExpenseTransactionEntity?>(null) }
+    var showExpenseDialog by remember { mutableStateOf(false) }
+
+    var pendingDeleteIncome by remember { mutableStateOf<IncomeTransactionEntity?>(null) }
+    var pendingDeleteExpense by remember { mutableStateOf<ExpenseTransactionEntity?>(null) }
+
+    LaunchedEffect(initialDialogType) {
+        when (initialDialogType) {
+            "income" -> {
+                ledgerTab = "Income"
+                editingIncome = null
+                showIncomeDialog = true
+                onConsumeInitialDialog()
+            }
+            "expense" -> {
+                ledgerTab = "Expenses"
+                editingExpense = null
+                showExpenseDialog = true
+                onConsumeInitialDialog()
+            }
+        }
+    }
+
+    val dateRange: Pair<Long, Long>? = remember(dateFilter, today, customStartEpoch, customEndEpoch) {
+        when (dateFilter) {
+            FinancialDateFilter.THIS_MONTH -> {
+                val ym = YearMonth.from(today)
+                ym.atDay(1).toEpochDay() to ym.atEndOfMonth().toEpochDay()
+            }
+            FinancialDateFilter.PREVIOUS_MONTH -> {
+                val ym = YearMonth.from(today).minusMonths(1)
+                ym.atDay(1).toEpochDay() to ym.atEndOfMonth().toEpochDay()
+            }
+            FinancialDateFilter.THIS_YEAR -> {
+                LocalDate.of(today.year, 1, 1).toEpochDay() to LocalDate.of(today.year, 12, 31).toEpochDay()
+            }
+            FinancialDateFilter.ALL_TIME -> null
+            FinancialDateFilter.CUSTOM -> {
+                minOf(customStartEpoch, customEndEpoch) to maxOf(customStartEpoch, customEndEpoch)
+            }
+        }
+    }
+
+    val filteredIncome = remember(uiState.incomeTransactions, dateRange) {
+        if (dateRange == null) uiState.incomeTransactions
+        else uiState.incomeTransactions.filter { it.dateEpochDay in dateRange.first..dateRange.second }
+    }
+    val filteredExpenses = remember(uiState.expenseTransactions, dateRange) {
+        if (dateRange == null) uiState.expenseTransactions
+        else uiState.expenseTransactions.filter { it.dateEpochDay in dateRange.first..dateRange.second }
+    }
+
+    // Period totals based on filter + Yearly totals for dashboard
+    val periodIncome = filteredIncome.sumOf { it.amount }
+    val periodExpenses = filteredExpenses.sumOf { it.amount }
+    val periodNet = periodIncome - periodExpenses
+
+    val yearStart = LocalDate.of(today.year, 1, 1).toEpochDay()
+    val yearEnd = LocalDate.of(today.year, 12, 31).toEpochDay()
+    val yearlyIncome = uiState.incomeTransactions.filter { it.dateEpochDay in yearStart..yearEnd }.sumOf { it.amount }
+    val yearlyExpenses = uiState.expenseTransactions.filter { it.dateEpochDay in yearStart..yearEnd }.sumOf { it.amount }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("budget_screen"),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Financial Filter Chips
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FinancialDateFilter.entries.forEach { filter ->
+                    FilterChip(
+                        selected = dateFilter == filter,
+                        onClick = {
+                            dateFilter = filter
+                            if (filter == FinancialDateFilter.CUSTOM) {
+                                showCustomRangeDialog = true
+                            }
+                        },
+                        label = { Text(filter.label) },
+                        modifier = Modifier.testTag("budget_filter_${filter.name.lowercase()}")
+                    )
+                }
+            }
+        }
+
+        // Financial Summary Cards
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MetricTile(
+                        label = if (dateFilter == FinancialDateFilter.ALL_TIME) "Total Income" else "${dateFilter.label} Income",
+                        value = Formatters.formatCurrency(periodIncome, currency),
+                        icon = Icons.Default.Payments,
+                        accentColor = StatusGreen,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("budget_total_income")
+                    )
+                    MetricTile(
+                        label = if (dateFilter == FinancialDateFilter.ALL_TIME) "Total Expenses" else "${dateFilter.label} Expenses",
+                        value = Formatters.formatCurrency(periodExpenses, currency),
+                        icon = Icons.Default.ReceiptLong,
+                        accentColor = StatusRed,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("budget_total_expenses")
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MetricTile(
+                        label = "Net Balance",
+                        value = Formatters.formatCurrency(periodNet, currency),
+                        subtitle = "Income - Expenses",
+                        icon = Icons.Default.AccountBalanceWallet,
+                        accentColor = if (periodNet >= 0) MaterialTheme.colorScheme.primary else StatusRed,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("budget_net_balance")
+                    )
+                    MetricTile(
+                        label = "Pending Payments",
+                        value = Formatters.formatCurrency(uiState.home.pendingClientPayments, currency),
+                        subtitle = "Active project dues",
+                        icon = Icons.Default.WarningAmber,
+                        accentColor = StatusAmber,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("budget_pending_payments")
+                    )
+                }
+
+                // Monthly & Yearly Quick Strip
+                StudioCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("This Month", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "+${Formatters.formatCurrency(uiState.home.currentMonthEarnings, currency)}",
+                                style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                color = StatusGreen
+                            )
+                            Text(
+                                "-${Formatters.formatCurrency(uiState.home.currentMonthExpenses, currency)}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                color = StatusRed
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                            Text("Year ${today.year}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "+${Formatters.formatCurrency(yearlyIncome, currency)}",
+                                style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                color = StatusGreen
+                            )
+                            Text(
+                                "-${Formatters.formatCurrency(yearlyExpenses, currency)}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                color = StatusRed
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Action Buttons
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        editingIncome = null
+                        showIncomeDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("budget_add_income_button")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Income")
+                }
+                FilledTonalButton(
+                    onClick = {
+                        editingExpense = null
+                        showExpenseDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("budget_add_expense_button")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Expense")
+                }
+            }
+        }
+
+        // Income / Expenses Switcher
+        item {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = ledgerTab == "Income",
+                    onClick = { ledgerTab = "Income" },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    modifier = Modifier.testTag("budget_tab_income")
+                ) {
+                    Text("Income (${filteredIncome.size})")
+                }
+                SegmentedButton(
+                    selected = ledgerTab == "Expenses",
+                    onClick = { ledgerTab = "Expenses" },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    modifier = Modifier.testTag("budget_tab_expenses")
+                ) {
+                    Text("Expenses (${filteredExpenses.size})")
+                }
+            }
+        }
+
+        if (ledgerTab == "Income") {
+            if (filteredIncome.isEmpty()) {
+                item {
+                    EmptyStateCard(
+                        icon = Icons.Default.Payments,
+                        title = "No income records found",
+                        subtitle = "Record client payments or other editing revenue here. Only recorded payments count as income.",
+                        actionLabel = "Add Income",
+                        actionTag = "budget_empty_add_income",
+                        onActionClick = {
+                            editingIncome = null
+                            showIncomeDialog = true
+                        }
+                    )
+                }
+            } else {
+                items(filteredIncome, key = { it.id }) { tx ->
+                    StudioCard(modifier = Modifier.testTag("income_card_${tx.id}")) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = tx.source,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val subtitle = buildString {
+                                    append(Formatters.formatDate(tx.dateEpochDay, dateFormat))
+                                    append(" · ${PaymentMethod.fromName(tx.paymentMethod).label}")
+                                    if (tx.clientNameSnapshot.isNotBlank()) append(" · ${tx.clientNameSnapshot}")
+                                }
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (tx.notes.isNotBlank()) {
+                                    Text(
+                                        text = tx.notes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "+${Formatters.formatCurrency(tx.amount, currency)}",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = MonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = StatusGreen
+                                )
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            editingIncome = tx
+                                            showIncomeDialog = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit income", modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            if (uiState.settings.confirmBeforeDelete) {
+                                                pendingDeleteIncome = tx
+                                            } else {
+                                                viewModel.deleteIncome(tx.id)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete income",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            if (filteredExpenses.isEmpty()) {
+                item {
+                    EmptyStateCard(
+                        icon = Icons.Default.ReceiptLong,
+                        title = "No expenses recorded",
+                        subtitle = "Track software subscriptions, editing assets, internet, or hardware upgrades.",
+                        actionLabel = "Add Expense",
+                        actionTag = "budget_empty_add_expense",
+                        onActionClick = {
+                            editingExpense = null
+                            showExpenseDialog = true
+                        }
+                    )
+                }
+            } else {
+                items(filteredExpenses, key = { it.id }) { ex ->
+                    StudioCard(modifier = Modifier.testTag("expense_card_${ex.id}")) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                StatusPill(
+                                    text = ExpenseCategory.fromName(ex.category).label,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = ex.description,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = Formatters.formatDate(ex.dateEpochDay, dateFormat),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (ex.notes.isNotBlank()) {
+                                    Text(
+                                        text = ex.notes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "-${Formatters.formatCurrency(ex.amount, currency)}",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = MonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = StatusRed
+                                )
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            editingExpense = ex
+                                            showExpenseDialog = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit expense", modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            if (uiState.settings.confirmBeforeDelete) {
+                                                pendingDeleteExpense = ex
+                                            } else {
+                                                viewModel.deleteExpense(ex.id)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete expense",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCustomRangeDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomRangeDialog = false },
+            title = { Text("Custom Date Range") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DatePickerField(
+                        label = "Start Date",
+                        epochDay = customStartEpoch,
+                        dateFormat = dateFormat,
+                        onDateSelected = { if (it != null) customStartEpoch = it }
+                    )
+                    DatePickerField(
+                        label = "End Date",
+                        epochDay = customEndEpoch,
+                        dateFormat = dateFormat,
+                        onDateSelected = { if (it != null) customEndEpoch = it }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showCustomRangeDialog = false }) { Text("Apply") }
+            }
+        )
+    }
+
+    if (showIncomeDialog) {
+        IncomeFormDialog(
+            existing = editingIncome,
+            uiState = uiState,
+            onSave = { tx ->
+                viewModel.saveIncome(tx) { showIncomeDialog = false }
+            },
+            onDismiss = { showIncomeDialog = false }
+        )
+    }
+
+    if (showExpenseDialog) {
+        ExpenseFormDialog(
+            existing = editingExpense,
+            uiState = uiState,
+            onSave = { ex ->
+                viewModel.saveExpense(ex) { showExpenseDialog = false }
+            },
+            onDismiss = { showExpenseDialog = false }
+        )
+    }
+
+    pendingDeleteIncome?.let { tx ->
+        ConfirmDeleteDialog(
+            title = "Delete Income Entry?",
+            message = "Delete '${tx.source}' (${Formatters.formatCurrency(tx.amount, currency)})? Linked project payments will recalculate automatically.",
+            onConfirm = {
+                viewModel.deleteIncome(tx.id)
+                pendingDeleteIncome = null
+            },
+            onDismiss = { pendingDeleteIncome = null }
+        )
+    }
+
+    pendingDeleteExpense?.let { ex ->
+        ConfirmDeleteDialog(
+            title = "Delete Expense Entry?",
+            message = "Delete '${ex.description}' (${Formatters.formatCurrency(ex.amount, currency)})?",
+            onConfirm = {
+                viewModel.deleteExpense(ex.id)
+                pendingDeleteExpense = null
+            },
+            onDismiss = { pendingDeleteExpense = null }
+        )
+    }
+}
+
+@Composable
+private fun IncomeFormDialog(
+    existing: IncomeTransactionEntity?,
+    uiState: MainUiState,
+    onSave: (IncomeTransactionEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val currency = uiState.settings.currencySymbol
+    val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
+
+    var source by remember { mutableStateOf(existing?.source.orEmpty()) }
+    var selectedClientId by remember { mutableStateOf(existing?.clientId) }
+    var selectedProjectId by remember { mutableStateOf(existing?.projectId) }
+    var amountText by remember {
+        mutableStateOf(
+            existing?.amount?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            }.orEmpty()
+        )
+    }
+    var dateEpoch by remember { mutableStateOf(existing?.dateEpochDay ?: uiState.today.toEpochDay()) }
+    var method by remember { mutableStateOf(PaymentMethod.fromName(existing?.paymentMethod)) }
+    var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val clientOptions = listOf<Pair<Long?, String>>(null to "No Client") +
+        uiState.clientsWithStats.map { it.client.id to it.client.name }
+    val projectOptions = listOf<Pair<Long?, String>>(null to "No Linked Project") +
+        uiState.projectsWithClient.map { it.project.id to it.project.title }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "Add Income" else "Edit Income") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = source,
+                    onValueChange = { source = it; error = null },
+                    label = { Text("Income Source *") },
+                    placeholder = { Text("e.g. Client Reel Payment") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("income_source_input")
+                )
+                DropdownSelectorField(
+                    label = "Client (Optional)",
+                    selectedLabel = clientOptions.firstOrNull { it.first == selectedClientId }?.second ?: "No Client",
+                    options = clientOptions,
+                    onOptionSelected = { selectedClientId = it }
+                )
+                DropdownSelectorField(
+                    label = "Related Project (Optional)",
+                    selectedLabel = projectOptions.firstOrNull { it.first == selectedProjectId }?.second ?: "No Linked Project",
+                    options = projectOptions,
+                    onOptionSelected = { pid ->
+                        selectedProjectId = pid
+                        val proj = uiState.projectsWithClient.firstOrNull { it.project.id == pid }
+                        if (proj != null) {
+                            if (selectedClientId == null) selectedClientId = proj.project.clientId
+                            if (source.isBlank()) source = "Payment: ${proj.project.title}"
+                        }
+                    }
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it; error = null },
+                    label = { Text("Amount ($currency) *") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("income_amount_input")
+                )
+                DatePickerField(
+                    label = "Date",
+                    epochDay = dateEpoch,
+                    dateFormat = dateFormat,
+                    onDateSelected = { if (it != null) dateEpoch = it }
+                )
+                DropdownSelectorField(
+                    label = "Payment Method",
+                    selectedLabel = method.label,
+                    options = PaymentMethod.entries.map { it to it.label },
+                    onOptionSelected = { method = it }
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (source.isBlank()) {
+                        error = "Income source is required."
+                        return@Button
+                    }
+                    val amt = amountText.toDoubleOrNull()
+                    if (amt == null || amt <= 0.0) {
+                        error = "Amount must be greater than zero."
+                        return@Button
+                    }
+                    onSave(
+                        IncomeTransactionEntity(
+                            id = existing?.id ?: 0L,
+                            source = source.trim(),
+                            clientId = selectedClientId,
+                            projectId = selectedProjectId,
+                            clientNameSnapshot = existing?.clientNameSnapshot.orEmpty(),
+                            projectTitleSnapshot = existing?.projectTitleSnapshot.orEmpty(),
+                            amount = amt,
+                            dateEpochDay = dateEpoch,
+                            paymentMethod = method.name,
+                            notes = notes.trim(),
+                            createdAtMillis = existing?.createdAtMillis ?: System.currentTimeMillis()
+                        )
+                    )
+                },
+                modifier = Modifier.testTag("income_save_button")
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun ExpenseFormDialog(
+    existing: ExpenseTransactionEntity?,
+    uiState: MainUiState,
+    onSave: (ExpenseTransactionEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val currency = uiState.settings.currencySymbol
+    val dateFormat = DateFormatOption.fromName(uiState.settings.dateFormat)
+
+    var category by remember { mutableStateOf(ExpenseCategory.fromName(existing?.category)) }
+    var description by remember { mutableStateOf(existing?.description.orEmpty()) }
+    var amountText by remember {
+        mutableStateOf(
+            existing?.amount?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            }.orEmpty()
+        )
+    }
+    var dateEpoch by remember { mutableStateOf(existing?.dateEpochDay ?: uiState.today.toEpochDay()) }
+    var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "Add Expense" else "Edit Expense") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                DropdownSelectorField(
+                    label = "Expense Category",
+                    selectedLabel = category.label,
+                    options = ExpenseCategory.entries.map { it to it.label },
+                    onOptionSelected = { category = it }
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it; error = null },
+                    label = { Text("Description *") },
+                    placeholder = { Text("e.g. Adobe Creative Cloud") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("expense_description_input")
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it; error = null },
+                    label = { Text("Amount ($currency) *") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("expense_amount_input")
+                )
+                DatePickerField(
+                    label = "Date",
+                    epochDay = dateEpoch,
+                    dateFormat = dateFormat,
+                    onDateSelected = { if (it != null) dateEpoch = it }
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (description.isBlank()) {
+                        error = "Description is required."
+                        return@Button
+                    }
+                    val amt = amountText.toDoubleOrNull()
+                    if (amt == null || amt <= 0.0) {
+                        error = "Amount must be greater than zero."
+                        return@Button
+                    }
+                    onSave(
+                        ExpenseTransactionEntity(
+                            id = existing?.id ?: 0L,
+                            category = category.name,
+                            description = description.trim(),
+                            amount = amt,
+                            dateEpochDay = dateEpoch,
+                            notes = notes.trim(),
+                            createdAtMillis = existing?.createdAtMillis ?: System.currentTimeMillis()
+                        )
+                    )
+                },
+                modifier = Modifier.testTag("expense_save_button")
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}

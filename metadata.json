@@ -1,0 +1,6 @@
+{
+  "name": "Rohan Edits App",
+  "description": "Personal video-editing career management system for Rohan Edits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
