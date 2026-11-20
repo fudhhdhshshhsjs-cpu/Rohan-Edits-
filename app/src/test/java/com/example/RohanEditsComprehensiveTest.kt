@@ -2,18 +2,25 @@ package com.example
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.backup.BackupExportManager
 import com.example.data.backup.ExportTarget
 import com.example.data.backup.toSnapshotValidated
 import com.example.data.local.AppDatabase
+import com.example.data.local.ClientFormDraft
+import com.example.data.local.DraftManager
 import com.example.data.local.PreferencesDataStore
+import com.example.data.local.ProjectFormDraft
 import com.example.data.local.entity.ClientEntity
 import com.example.data.local.entity.ExpenseTransactionEntity
+import com.example.data.local.entity.IncomeTransactionEntity
 import com.example.data.local.entity.ProjectEntity
 import com.example.data.model.CalendarStatus
 import com.example.data.model.ClientType
@@ -37,6 +44,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -57,6 +66,7 @@ class RohanEditsComprehensiveTest {
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var prefs: PreferencesDataStore
+    private lateinit var draftManager: DraftManager
     private lateinit var repository: CareerRepository
     private lateinit var backupManager: BackupExportManager
     private lateinit var viewModel: MainViewModel
@@ -71,10 +81,11 @@ class RohanEditsComprehensiveTest {
         context = ApplicationProvider.getApplicationContext()
         db = AppDatabase.createInMemory(context)
         prefs = PreferencesDataStore(context)
+        draftManager = DraftManager(context)
         repository = CareerRepository(db, prefs)
         backupManager = BackupExportManager()
         runBlocking { repository.ensureDefaultsExist() }
-        viewModel = MainViewModel(repository, backupManager, fixedDateProvider)
+        viewModel = MainViewModel(repository, backupManager, fixedDateProvider, draftManager)
     }
 
     @After
@@ -85,10 +96,12 @@ class RohanEditsComprehensiveTest {
     @Test
     fun scenarios_1_through_16_career_finances_calendar_backup_and_analytics() {
         runBlocking {
-        // Initial defaults check (6 July 2026 start date, 0% consistency, zero fake data)
+        // Initial defaults check (6 July 2026 start date, 0% consistency, zero fake data, DARK default)
         val initialProfile = repository.editorProfile.first()
+        val initialSettings = repository.settings.first()
         assertEquals("Rohan", initialProfile.name)
         assertEquals("Rohan Edits", initialProfile.brandName)
+        assertEquals(ThemeMode.DARK.name, initialSettings.themeMode)
         assertEquals(LocalDate.of(2026, 7, 6).toEpochDay(), initialProfile.officialStartDateEpochDay)
         assertEquals(0.0, Formatters.calculateConsistencyPercent(0, 0), 0.001)
 
@@ -150,14 +163,14 @@ class RohanEditsComprehensiveTest {
 
         // 6. Record first partial payment = ₹200 -> Remaining ₹300, Partial, Income ₹200
         repository.recordProjectPayment(commissionedId, 200.0, fixedToday.toEpochDay(), PaymentMethod.UPI, "Advance")
-        var projAfter1 = repository.observeProject(commissionedId).first()!!
+        val projAfter1 = repository.observeProject(commissionedId).first()!!
         assertEquals(200.0, projAfter1.amountPaid, 0.001)
         assertEquals(PaymentStatus.PARTIAL.name, projAfter1.paymentStatus)
         assertEquals(200.0, repository.incomeTransactions.first().sumOf { it.amount }, 0.001)
 
         // 7 & 8. Record second payment = ₹150 -> Remaining ₹150, Partial, Income ₹350
         repository.recordProjectPayment(commissionedId, 150.0, fixedToday.toEpochDay(), PaymentMethod.BANK_TRANSFER, "Milestone 2")
-        var projAfter2 = repository.observeProject(commissionedId).first()!!
+        val projAfter2 = repository.observeProject(commissionedId).first()!!
         assertEquals(350.0, projAfter2.amountPaid, 0.001)
         assertEquals(PaymentStatus.PARTIAL.name, projAfter2.paymentStatus)
         assertEquals(150.0, projAfter2.projectAmount - projAfter2.amountPaid, 0.001)
@@ -186,7 +199,6 @@ class RohanEditsComprehensiveTest {
         // 11, 12, 13. Mark Done, Missed, and Future Done -> verify consistency excludes future & not marked
         repository.setCalendarDayStatus(fixedToday.minusDays(2).toEpochDay(), CalendarStatus.DONE, "Edited reel")
         repository.setCalendarDayStatus(fixedToday.minusDays(1).toEpochDay(), CalendarStatus.MISSED, "Rest")
-        // Future date should be excluded from past consistency calculation
         repository.setCalendarDayStatus(fixedToday.plusDays(2).toEpochDay(), CalendarStatus.DONE, "Planned")
 
         val validPast = repository.calendarDays.first().filter { it.dateEpochDay <= fixedToday.toEpochDay() }
@@ -248,7 +260,6 @@ class RohanEditsComprehensiveTest {
         )
         diskDb1.close()
 
-        // Reopen DB from disk (simulates app restart)
         val diskDb2 = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, dbName)
             .allowMainThreadQueries()
             .build()
@@ -262,10 +273,174 @@ class RohanEditsComprehensiveTest {
     }
 
     @Test
+    fun scenario_19_large_text_persistence_and_draft_recovery() {
+        runBlocking {
+            val hugeBrief = buildString {
+                repeat(2000) { idx ->
+                    append("Brief line #$idx: 60fps kinetic typography, custom After Effects curves, sound risers & clean SaaS UI callouts.\n")
+                }
+            }
+            assertTrue("Expected >150KB text entry", hugeBrief.length > 150_000)
+
+            val dbName = "rohan_large_text_test_${System.currentTimeMillis()}.db"
+            val diskDb1 = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+                .allowMainThreadQueries()
+                .build()
+            val repo1 = CareerRepository(diskDb1, prefs)
+            repo1.ensureDefaultsExist()
+
+            val cid = repo1.saveClient(
+                ClientEntity(
+                    name = "Enterprise AI Client",
+                    platform = PlatformType.YOUTUBE.name,
+                    clientType = ClientType.REGULAR.name,
+                    instructions = hugeBrief,
+                    additionalNotes = hugeBrief
+                )
+            )
+            val pid = repo1.saveProject(
+                ProjectEntity(
+                    clientId = cid,
+                    category = VideoCategory.CLIENT_VIDEO.name,
+                    title = "Enterprise Deep Dive Video",
+                    projectType = ProjectType.SAAS_ANIMATION.name,
+                    priority = ProjectPriority.HIGH.name,
+                    projectDateEpochDay = fixedToday.toEpochDay(),
+                    paymentStatus = PaymentStatus.UNPAID.name,
+                    projectStatus = ProjectStatus.IN_PROGRESS.name,
+                    clientFeedback = hugeBrief,
+                    additionalNotes = hugeBrief
+                )
+            )
+            val prof = repo1.editorProfile.first()
+            repo1.saveEditorProfile(prof.copy(personalNotes = hugeBrief))
+            diskDb1.close()
+
+            // Reopen database from disk and verify zero truncation or loss
+            val diskDb2 = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+                .allowMainThreadQueries()
+                .build()
+            val repo2 = CareerRepository(diskDb2, prefs)
+            val loadedClient = repo2.observeClient(cid).first()!!
+            val loadedProject = repo2.observeProject(pid).first()!!
+            val loadedProfile = repo2.editorProfile.first()
+
+            assertEquals(hugeBrief.length, loadedClient.instructions.length)
+            assertEquals(hugeBrief.length, loadedClient.additionalNotes.length)
+            assertEquals(hugeBrief.length, loadedProject.clientFeedback.length)
+            assertEquals(hugeBrief.length, loadedProject.additionalNotes.length)
+            assertEquals(hugeBrief.length, loadedProfile.personalNotes.length)
+            diskDb2.close()
+            context.deleteDatabase(dbName)
+
+            // Verify DraftManager auto-save & restore with large unsaved entries
+            val clientDraft = ClientFormDraft(
+                name = "Unsaved Client",
+                instructions = hugeBrief.take(25_000),
+                additionalNotes = hugeBrief.take(25_000)
+            )
+            draftManager.saveClientDraft(clientDraft)
+            val restoredClientDraft = draftManager.getClientDraft(null)
+            assertNotNull(restoredClientDraft)
+            assertEquals(25_000, restoredClientDraft!!.instructions.length)
+            draftManager.clearClientDraft(null)
+            assertNull(draftManager.getClientDraft(null))
+
+            val projectDraft = ProjectFormDraft(
+                title = "Unsaved Project",
+                notes = hugeBrief.take(25_000)
+            )
+            draftManager.saveProjectDraft(projectDraft)
+            val restoredProjectDraft = draftManager.getProjectDraft(null)
+            assertNotNull(restoredProjectDraft)
+            assertEquals(25_000, restoredProjectDraft!!.notes.length)
+            draftManager.clearProjectDraft(null)
+            assertNull(draftManager.getProjectDraft(null))
+        }
+    }
+
+    @Test
+    fun scenario_20_large_list_rendering_navigation_and_detail_large_text_ui() {
+        val hugeText = "Detailed editing notes line. ".repeat(1200) // ~35KB
+        runBlocking {
+            val cid = repository.saveClient(
+                ClientEntity(
+                    name = "Flagship Agency",
+                    platform = PlatformType.YOUTUBE.name,
+                    clientType = ClientType.REGULAR.name,
+                    instructions = hugeText,
+                    additionalNotes = hugeText
+                )
+            )
+            repeat(35) { i ->
+                repository.saveProject(
+                    ProjectEntity(
+                        clientId = cid,
+                        category = VideoCategory.CLIENT_VIDEO.name,
+                        title = "Campaign Deliverable #$i",
+                        projectType = ProjectType.SAAS_ANIMATION.name,
+                        priority = ProjectPriority.NORMAL.name,
+                        projectDateEpochDay = fixedToday.minusDays(i.toLong()).toEpochDay(),
+                        projectAmount = 1000.0,
+                        paymentStatus = PaymentStatus.UNPAID.name,
+                        projectStatus = ProjectStatus.IN_PROGRESS.name,
+                        additionalNotes = hugeText
+                    )
+                )
+            }
+            repeat(20) { i ->
+                repository.saveIncome(
+                    IncomeTransactionEntity(
+                        source = "Invoice #$i",
+                        clientId = cid,
+                        amount = 500.0,
+                        dateEpochDay = fixedToday.minusDays(i.toLong()).toEpochDay(),
+                        paymentMethod = PaymentMethod.UPI.name,
+                        notes = hugeText
+                    )
+                )
+            }
+        }
+
+        composeTestRule.setContent {
+            RohanEditsAppShell(viewModel = viewModel)
+        }
+        composeTestRule.waitForIdle()
+
+        // Home screen displayed
+        composeTestRule.onNodeWithTag("home_screen").assertIsDisplayed()
+
+        // Clients & Projects Hub scrolling through large datasets
+        composeTestRule.onNodeWithTag("nav_clients").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("clients_screen").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("hub_tab_projects").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("projects_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("projects_screen").performScrollToNode(hasText("Campaign Deliverable #24"))
+        composeTestRule.waitForIdle()
+
+        // Open project detail with 35KB text and verify ExpandableInfoRow renders cleanly
+        composeTestRule.onNodeWithText("Campaign Deliverable #24").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("project_detail_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("topbar_back_button").performClick()
+        composeTestRule.waitForIdle()
+
+        // Budget screen scrolling large income list with long notes
+        composeTestRule.onNodeWithTag("nav_budget").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("budget_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("budget_screen").performScrollToIndex(15)
+        composeTestRule.waitForIdle()
+    }
+
+    @Test
     fun scenarios_17_and_18_dark_mode_and_all_bottom_navigation_tabs() {
         runBlocking {
             val current = repository.settings.first()
-            repository.updateSettings(current.copy(themeMode = ThemeMode.DARK.name))
+            assertEquals(ThemeMode.DARK.name, current.themeMode)
         }
 
         composeTestRule.setContent {

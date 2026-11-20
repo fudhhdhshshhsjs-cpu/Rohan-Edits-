@@ -28,7 +28,7 @@ class PreferencesDataStore(private val context: Context) {
     val settingsFlow: Flow<AppSettingsEntity> = context.settingsDataStore.data.map { prefs ->
         AppSettingsEntity(
             id = 1,
-            themeMode = prefs[Keys.THEME_MODE] ?: ThemeMode.LIGHT.name,
+            themeMode = prefs[Keys.THEME_MODE] ?: ThemeMode.DARK.name,
             dateFormat = prefs[Keys.DATE_FORMAT] ?: DateFormatOption.DD_MMM_YYYY.name,
             currencySymbol = prefs[Keys.CURRENCY_SYMBOL] ?: "₹",
             confirmBeforeDelete = prefs[Keys.CONFIRM_BEFORE_DELETE] ?: true,

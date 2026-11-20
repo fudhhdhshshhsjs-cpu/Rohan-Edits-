@@ -1,10 +1,15 @@
 package com.example.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -19,11 +24,13 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -37,12 +44,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -214,64 +224,95 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
 
         Scaffold(
             contentWindowInsets = WindowInsets.safeDrawing,
+            containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = topBarTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                Column {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = topBarTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        navigationIcon = {
+                            if (!isTopLevel) {
+                                IconButton(
+                                    onClick = { navController.popBackStack() },
+                                    modifier = Modifier.testTag("topbar_back_button")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                }
+                            }
+                        },
+                        actions = {
+                            if (isTopLevel) {
+                                IconButton(
+                                    onClick = { navController.navigate(Routes.GLOBAL_SEARCH) },
+                                    modifier = Modifier.testTag("topbar_search_button")
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Global Search")
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface
                         )
-                    },
-                    navigationIcon = {
-                        if (!isTopLevel) {
-                            IconButton(
-                                onClick = { navController.popBackStack() },
-                                modifier = Modifier.testTag("topbar_back_button")
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        }
-                    },
-                    actions = {
-                        if (isTopLevel) {
-                            IconButton(
-                                onClick = { navController.navigate(Routes.GLOBAL_SEARCH) },
-                                modifier = Modifier.testTag("topbar_search_button")
-                            ) {
-                                Icon(Icons.Default.Search, contentDescription = "Global Search")
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
                     )
-                )
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
             },
             bottomBar = {
                 if (isTopLevel) {
-                    NavigationBar {
-                        topLevelTabs.forEach { tab ->
-                            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    if (tab.route == Routes.CLIENTS) {
-                                        showProjectsInHub = false
-                                    }
-                                    navigateTopLevel(tab.route)
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        contentDescription = tab.label
-                                    )
-                                },
-                                label = { Text(tab.label) },
-                                modifier = Modifier.testTag(tab.testTag)
-                            )
+                    Column {
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp
+                        ) {
+                            topLevelTabs.forEach { tab ->
+                                val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = {
+                                        if (tab.route == Routes.CLIENTS) {
+                                            showProjectsInHub = false
+                                        }
+                                        navigateTopLevel(tab.route)
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                            contentDescription = tab.label
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = tab.label,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    modifier = Modifier.testTag(tab.testTag)
+                                )
+                            }
                         }
                     }
                 }
@@ -280,11 +321,17 @@ fun RohanEditsAppShell(viewModel: MainViewModel) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(innerPadding),
+                contentAlignment = Alignment.TopCenter
             ) {
                 NavHost(
                     navController = navController,
-                    startDestination = Routes.HOME
+                    startDestination = Routes.HOME,
+                    modifier = Modifier.widthIn(max = 840.dp),
+                    enterTransition = { fadeIn(animationSpec = tween(120)) },
+                    exitTransition = { fadeOut(animationSpec = tween(90)) },
+                    popEnterTransition = { fadeIn(animationSpec = tween(120)) },
+                    popExitTransition = { fadeOut(animationSpec = tween(90)) }
                 ) {
                     composable(Routes.HOME) {
                         HomeScreen(

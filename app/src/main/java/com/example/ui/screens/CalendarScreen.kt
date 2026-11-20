@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -53,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,7 +65,7 @@ import com.example.data.model.DateFormatOption
 import com.example.ui.components.MetricTile
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusGreenContainerDark
 import com.example.ui.theme.StatusGreenContainerLight
@@ -387,7 +390,11 @@ fun CalendarScreen(
                                         )
                                         Text(
                                             text = Formatters.formatPercent(mStats.consistencyPercent),
-                                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = MonoFontFamily),
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontFamily = InterFontFamily,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontFeatureSettings = "tnum"
+                                            ),
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -445,7 +452,7 @@ private fun CalendarDayCell(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.3f
     val (bgColor, textColor) = when (status) {
         CalendarStatus.DONE -> (if (isDark) StatusGreenContainerDark else StatusGreenContainerLight) to (if (isDark) Color(0xFF86EFAC) else Color(0xFF14532D))
         CalendarStatus.MISSED -> (if (isDark) StatusRedContainerDark else StatusRedContainerLight) to (if (isDark) Color(0xFFFCA5A5) else Color(0xFF7F1D1D))
@@ -471,8 +478,9 @@ private fun CalendarDayCell(
             Text(
                 text = dayNumber.toString(),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = MonoFontFamily,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium
+                    fontFamily = InterFontFamily,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    fontFeatureSettings = "tnum"
                 ),
                 color = textColor
             )
@@ -534,7 +542,10 @@ private fun CalendarStatusDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 CalendarStatusOptionButton(
                     status = CalendarStatus.DONE,
                     selected = selectedStatus == CalendarStatus.DONE,
@@ -565,7 +576,7 @@ private fun CalendarStatusDialog(
                     label = { Text("Editing Note (Optional)") },
                     placeholder = { Text("e.g. Color graded SaaS intro") },
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
+                    maxLines = 4
                 )
             }
         },

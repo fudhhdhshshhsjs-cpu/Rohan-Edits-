@@ -1,10 +1,8 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,17 +43,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.R
 import com.example.data.model.DateFormatOption
 import com.example.data.model.ProjectPriority
 import com.example.data.model.ProjectStatus
@@ -66,7 +59,7 @@ import com.example.ui.components.ProjectStatusBadge
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
@@ -95,38 +88,19 @@ fun HomeScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Hero Studio Career Card
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.large)
+        // Lightweight Modern SaaS Career Summary Card (zero heavy bitmap decode)
+        item(key = "hero_card", contentType = "hero") {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                tonalElevation = 1.dp
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.img_studio_banner),
-                    contentDescription = "Rohan Edits Studio Banner",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(176.dp),
-                    contentScale = ContentScale.Crop
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xCC1E103C),
-                                    Color(0xEE140B29)
-                                )
-                            )
-                        )
-                )
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
+                        .padding(18.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -137,57 +111,64 @@ fun HomeScreen(
                             Text(
                                 text = home.brandName.uppercase(),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFFD8B4FE),
-                                fontWeight = FontWeight.Bold
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Welcome back, ${home.editorName}",
                                 style = MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0x33FFFFFF)
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
                                 text = "${Formatters.formatPercent(home.consistencyPercent)} Consistency",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Editing Experience",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFC4B5FD)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "${home.experience.totalDays} Days (${home.experience.summaryText})",
                                 style = MaterialTheme.typography.titleLarge.copy(
-                                    fontFamily = MonoFontFamily,
-                                    fontWeight = FontWeight.Bold
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
                                 ),
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Journey started ${Formatters.formatDate(home.officialStartDate, dateFormat)}",
+                                text = "Started ${Formatters.formatDate(home.officialStartDate, dateFormat)}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFE9D5FF)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -196,14 +177,14 @@ fun HomeScreen(
         }
 
         // Quick Actions
-        item {
+        item(key = "quick_actions", contentType = "actions") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Quick Actions")
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     QuickActionPill(
                         label = "Add Client",
@@ -241,7 +222,7 @@ fun HomeScreen(
         }
 
         // Career Overview
-        item {
+        item(key = "career_overview", contentType = "metrics") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Career Overview")
                 Row(
@@ -299,14 +280,14 @@ fun HomeScreen(
                     value = "${home.experience.totalDays} days (${home.experience.summaryText})",
                     subtitle = "Official Start: ${Formatters.formatDate(home.officialStartDate, dateFormat)}",
                     icon = Icons.Default.Schedule,
-                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    accentColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.testTag("home_experience")
                 )
             }
         }
 
         // Financial Overview
-        item {
+        item(key = "financial_overview", contentType = "metrics") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Financial Overview")
                 Row(
@@ -363,7 +344,7 @@ fun HomeScreen(
         }
 
         // Monthly Performance
-        item {
+        item(key = "monthly_perf", contentType = "summary") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(
                     title = "Monthly Performance (${Formatters.formatMonthYear(uiState.today.year, uiState.today.monthValue)})"
@@ -417,8 +398,8 @@ fun HomeScreen(
             }
         }
 
-        // Active Projects Preview (NOT the calendar)
-        item {
+        // Active Projects Preview
+        item(key = "active_projects_header", contentType = "header") {
             SectionHeader(
                 title = "Active Projects",
                 actionLabel = "View All",
@@ -428,7 +409,7 @@ fun HomeScreen(
         }
 
         if (home.activeProjects.isEmpty()) {
-            item {
+            item(key = "active_projects_empty", contentType = "empty") {
                 EmptyStateCard(
                     icon = Icons.Default.FolderCopy,
                     title = "No active projects",
@@ -439,7 +420,11 @@ fun HomeScreen(
                 )
             }
         } else {
-            items(home.activeProjects, key = { it.project.id }) { item ->
+            items(
+                items = home.activeProjects,
+                key = { it.project.id },
+                contentType = { "project_card" }
+            ) { item ->
                 val p = item.project
                 StudioCard(onClick = { onOpenProject(p.id) }) {
                     Row(
@@ -457,7 +442,9 @@ fun HomeScreen(
                             Text(
                                 text = item.clientName ?: "No client linked",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -505,7 +492,7 @@ private fun QuickActionPill(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     } else {
         FilledTonalButton(
@@ -522,7 +509,7 @@ private fun QuickActionPill(
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     }
 }
@@ -538,14 +525,17 @@ private fun MonthlyStatColumn(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium.copy(
-                fontFamily = MonoFontFamily,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontFeatureSettings = "tnum"
             ),
             color = valueColor,
             maxLines = 1,

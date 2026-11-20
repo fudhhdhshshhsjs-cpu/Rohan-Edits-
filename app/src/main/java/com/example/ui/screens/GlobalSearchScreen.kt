@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.ClientType
 import com.example.data.model.DateFormatOption
@@ -37,7 +38,7 @@ import com.example.ui.components.ProjectStatusBadge
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
 import com.example.ui.viewmodel.MainViewModel
@@ -110,10 +111,16 @@ fun GlobalSearchScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (results.clients.isNotEmpty()) {
-                    item { SectionHeader(title = "Clients (${results.clients.size})") }
-                    items(results.clients, key = { "c_${it.client.id}" }) { c ->
+                    item(key = "header_clients", contentType = "header") { SectionHeader(title = "Clients (${results.clients.size})") }
+                    items(results.clients, key = { "c_${it.client.id}" }, contentType = { "client" }) { c ->
                         StudioCard(onClick = { onOpenClient(c.client.id) }) {
-                            Text(c.client.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = c.client.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text(
                                 "${ClientType.fromName(c.client.clientType).label} · ${c.totalProjects} projects",
                                 style = MaterialTheme.typography.bodySmall,
@@ -124,8 +131,8 @@ fun GlobalSearchScreen(
                 }
 
                 if (results.projects.isNotEmpty()) {
-                    item { SectionHeader(title = "Projects (${results.projects.size})") }
-                    items(results.projects, key = { "p_${it.project.id}" }) { p ->
+                    item(key = "header_projects", contentType = "header") { SectionHeader(title = "Projects (${results.projects.size})") }
+                    items(results.projects, key = { "p_${it.project.id}" }, contentType = { "project" }) { p ->
                         StudioCard(onClick = { onOpenProject(p.project.id) }) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -133,11 +140,19 @@ fun GlobalSearchScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(p.project.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Text(
-                                        p.clientName ?: "Standalone project",
+                                        text = p.project.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = p.clientName ?: "Standalone project",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 ProjectStatusBadge(ProjectStatus.fromName(p.project.projectStatus), p.isOverdue)
@@ -147,20 +162,30 @@ fun GlobalSearchScreen(
                 }
 
                 if (results.income.isNotEmpty()) {
-                    item { SectionHeader(title = "Income (${results.income.size})") }
-                    items(results.income, key = { "i_${it.id}" }) { tx ->
+                    item(key = "header_income", contentType = "header") { SectionHeader(title = "Income (${results.income.size})") }
+                    items(results.income, key = { "i_${it.id}" }, contentType = { "income" }) { tx ->
                         StudioCard(onClick = onOpenBudget) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(tx.source, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = tx.source,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Text(Formatters.formatDate(tx.dateEpochDay, dateFormat), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text(
                                     "+${Formatters.formatCurrency(tx.amount, currency)}",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontFamily = InterFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFeatureSettings = "tnum"
+                                    ),
                                     color = StatusGreen
                                 )
                             }
@@ -169,20 +194,30 @@ fun GlobalSearchScreen(
                 }
 
                 if (results.expenses.isNotEmpty()) {
-                    item { SectionHeader(title = "Expenses (${results.expenses.size})") }
-                    items(results.expenses, key = { "e_${it.id}" }) { ex ->
+                    item(key = "header_expenses", contentType = "header") { SectionHeader(title = "Expenses (${results.expenses.size})") }
+                    items(results.expenses, key = { "e_${it.id}" }, contentType = { "expense" }) { ex ->
                         StudioCard(onClick = onOpenBudget) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(ex.description, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = ex.description,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Text(Formatters.formatDate(ex.dateEpochDay, dateFormat), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text(
                                     "-${Formatters.formatCurrency(ex.amount, currency)}",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontFamily = InterFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFeatureSettings = "tnum"
+                                    ),
                                     color = StatusRed
                                 )
                             }

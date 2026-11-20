@@ -40,6 +40,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.ClientType
 import com.example.data.model.ProjectStatus
@@ -50,7 +51,7 @@ import com.example.ui.components.StudioCard
 import com.example.ui.state.FinancialPeriodPoint
 import com.example.ui.state.MainUiState
 import com.example.ui.state.VideoOutputPeriodPoint
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
@@ -96,7 +97,7 @@ fun AnalyticsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Overview Cards
-        item {
+        item(key = "analytics_overview", contentType = "overview") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Overview")
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -136,7 +137,7 @@ fun AnalyticsScreen(
         }
 
         // Career Performance
-        item {
+        item(key = "analytics_career_perf", contentType = "perf") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Career Performance")
                 StudioCard {
@@ -145,7 +146,11 @@ fun AnalyticsScreen(
                             Text("Editing Days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 "${home.totalEditingDays}",
-                                style = MaterialTheme.typography.titleLarge.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusGreen
                             )
                         }
@@ -153,7 +158,11 @@ fun AnalyticsScreen(
                             Text("Missed Days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 "${home.totalMissedDays}",
-                                style = MaterialTheme.typography.titleLarge.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusRed
                             )
                         }
@@ -161,7 +170,11 @@ fun AnalyticsScreen(
                             Text("Consistency", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 Formatters.formatPercent(home.consistencyPercent),
-                                style = MaterialTheme.typography.titleLarge.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -172,14 +185,22 @@ fun AnalyticsScreen(
                             Text("Completed Projects", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 "${uiState.projectsWithClient.count { it.project.projectStatus == ProjectStatus.COMPLETED.name }}",
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold)
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
                             )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Avg Videos / Month", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 String.format(java.util.Locale.ENGLISH, "%.1f", avgVideosPerMonth),
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold)
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
                             )
                         }
                     }
@@ -188,7 +209,7 @@ fun AnalyticsScreen(
         }
 
         // Earnings Analytics Chart
-        item {
+        item(key = "analytics_earnings_chart", contentType = "chart") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Earnings vs Expenses")
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -224,7 +245,10 @@ fun AnalyticsScreen(
                     if (inspectPoint != null) {
                         Text(
                             text = "${inspectPoint.label}: Income ${Formatters.formatCurrency(inspectPoint.income, currency)} · Expenses ${Formatters.formatCurrency(inspectPoint.expense, currency)} · Net ${Formatters.formatCurrency(inspectPoint.net, currency)}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = InterFontFamily,
+                                fontFeatureSettings = "tnum"
+                            ),
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -233,7 +257,7 @@ fun AnalyticsScreen(
         }
 
         // Video Output Analytics
-        item {
+        item(key = "analytics_video_chart", contentType = "chart") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Video Output Analytics")
                 Row(
@@ -262,26 +286,54 @@ fun AnalyticsScreen(
         }
 
         // Client Analytics
-        item {
+        item(key = "analytics_clients", contentType = "clients") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader(title = "Client Analytics")
                 StudioCard {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${uiState.clientsWithStats.size}", style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold))
+                            Text(
+                                "${uiState.clientsWithStats.size}",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
+                            )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("New", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$newClientsCount", style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold))
+                            Text(
+                                "$newClientsCount",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
+                            )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Old", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$oldClientsCount", style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold))
+                            Text(
+                                "$oldClientsCount",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
+                            )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Regular", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$regularClientsCount", style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold))
+                            Text(
+                                "$regularClientsCount",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                )
+                            )
                         }
                     }
 
@@ -294,16 +346,23 @@ fun AnalyticsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = c.client.name,
                                     style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "${c.completedVideos}/${c.totalProjects} done · ${Formatters.formatCurrency(c.totalEarningsReceived, currency)}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = InterFontFamily,
+                                        fontFeatureSettings = "tnum"
+                                    ),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -443,7 +502,11 @@ private fun VideoOutputBarChart(points: List<VideoOutputPeriodPoint>) {
                 ) {
                     Text(
                         text = "${point.completedCount}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontFeatureSettings = "tnum"
+                        ),
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(

@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,8 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -43,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.DateFormatOption
 import com.example.data.model.PaymentMethod
@@ -54,18 +59,20 @@ import com.example.data.model.VideoCategory
 import com.example.ui.components.ConfirmDeleteDialog
 import com.example.ui.components.DatePickerField
 import com.example.ui.components.DropdownSelectorField
+import com.example.ui.components.ExpandableInfoRow
 import com.example.ui.components.PaymentStatusBadge
 import com.example.ui.components.PriorityBadge
 import com.example.ui.components.ProjectStatusBadge
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.ui.viewmodel.MainViewModel
 import com.example.util.Formatters
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProjectDetailScreen(
     projectId: Long,
@@ -133,7 +140,10 @@ fun ProjectDetailScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     ProjectStatusBadge(ProjectStatus.fromName(p.projectStatus), item.isOverdue)
                     PriorityBadge(ProjectPriority.fromName(p.priority))
                     PaymentStatusBadge(PaymentStatus.fromName(p.paymentStatus))
@@ -190,27 +200,45 @@ fun ProjectDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Project Amount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             Formatters.formatCurrency(p.projectAmount, currency),
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold)
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Column {
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Amount Paid", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             Formatters.formatCurrency(p.amountPaid, currency),
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
-                            color = StatusGreen
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = StatusGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                         Text("Pending", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             Formatters.formatCurrency(item.remainingAmount, currency),
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
-                            color = if (item.remainingAmount > 0) StatusAmber else StatusGreen
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = if (item.remainingAmount > 0) StatusAmber else StatusGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -265,28 +293,28 @@ fun ProjectDetailScreen(
         }
 
         // Metadata & Feedback
-        item {
+        item(key = "project_specs", contentType = "info") {
             StudioCard {
                 Text("Project Specifications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                DetailInfoRow("Project Date", Formatters.formatDate(p.projectDateEpochDay, dateFormat))
-                DetailInfoRow(
+                ExpandableInfoRow("Project Date", Formatters.formatDate(p.projectDateEpochDay, dateFormat))
+                ExpandableInfoRow(
                     "Deadline",
                     p.deadlineEpochDay?.let { Formatters.formatDate(it, dateFormat) } ?: "No deadline"
                 )
-                DetailInfoRow("Video Duration", p.videoDuration.ifBlank { "Not specified" })
-                DetailInfoRow("Client Rating", p.clientRating?.let { "$it / 10" } ?: "Not rated")
-                DetailInfoRow("Client Feedback", p.clientFeedback.ifBlank { "None" })
-                DetailInfoRow("Notes", p.additionalNotes.ifBlank { "None" })
+                ExpandableInfoRow("Video Duration", p.videoDuration.ifBlank { "Not specified" })
+                ExpandableInfoRow("Client Rating", p.clientRating?.let { "$it / 10" } ?: "Not rated")
+                ExpandableInfoRow("Client Feedback", p.clientFeedback.ifBlank { "None" })
+                ExpandableInfoRow("Notes", p.additionalNotes.ifBlank { "None" })
             }
         }
 
         // Linked Payment History
-        item {
+        item(key = "payment_history_header", contentType = "header") {
             SectionHeader(title = "Payment History (${linkedPayments.size})")
         }
         if (linkedPayments.isEmpty()) {
-            item {
+            item(key = "payment_history_empty", contentType = "empty") {
                 StudioCard {
                     Text(
                         text = "No payments recorded for this project yet. Marking a project completed does not add income until payment is recorded.",
@@ -296,7 +324,7 @@ fun ProjectDetailScreen(
                 }
             }
         } else {
-            items(linkedPayments, key = { it.id }) { tx ->
+            items(linkedPayments, key = { it.id }, contentType = { "payment" }) { tx ->
                 StudioCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -312,14 +340,18 @@ fun ProjectDetailScreen(
                             Text(
                                 text = "${PaymentMethod.fromName(tx.paymentMethod).label}${if (tx.notes.isNotBlank()) " · ${tx.notes}" else ""}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "+${Formatters.formatCurrency(tx.amount, currency)}",
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = MonoFontFamily,
-                                fontWeight = FontWeight.Bold
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
                             ),
                             color = StatusGreen
                         )
@@ -359,7 +391,10 @@ fun ProjectDetailScreen(
             onDismissRequest = { showRecordPayment = false },
             title = { Text("Record Payment") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     if (item.remainingAmount > 0) {
                         Text(
                             text = "Remaining balance: ${Formatters.formatCurrency(item.remainingAmount, currency)}",
@@ -393,7 +428,7 @@ fun ProjectDetailScreen(
                         value = notes,
                         onValueChange = { notes = it },
                         label = { Text("Notes (e.g. Advance / Final)") },
-                        singleLine = true,
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (error != null) {

@@ -7,6 +7,9 @@ import com.example.data.backup.BackupExportManager
 import com.example.data.backup.BackupPayloadDto
 import com.example.data.backup.ExportTarget
 import com.example.data.backup.toSnapshotValidated
+import com.example.data.local.ClientFormDraft
+import com.example.data.local.DraftManager
+import com.example.data.local.ProjectFormDraft
 import com.example.data.local.entity.AppSettingsEntity
 import com.example.data.local.entity.CalendarDayEntity
 import com.example.data.local.entity.ClientEntity
@@ -35,14 +38,17 @@ import com.example.ui.state.VideoOutputPeriodPoint
 import com.example.ui.state.YearActivityStats
 import com.example.util.DateProvider
 import com.example.util.Formatters
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -54,7 +60,8 @@ sealed interface UiEvent {
 class MainViewModel(
     private val repository: CareerRepository,
     private val backupExportManager: BackupExportManager,
-    private val dateProvider: DateProvider
+    private val dateProvider: DateProvider,
+    private val draftManager: DraftManager? = null
 ) : ViewModel() {
 
     private val todayFlow = MutableStateFlow(dateProvider.today())
@@ -97,11 +104,13 @@ class MainViewModel(
         repository.expenseTransactions
     ) { core, calendarDays, incomeList, expenseList ->
         buildMainUiState(core, calendarDays, incomeList, expenseList)
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = MainUiState(today = dateProvider.today(), isLoading = true)
-    )
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = MainUiState(today = dateProvider.today(), isLoading = true)
+        )
 
     private fun buildMainUiState(
         core: CoreSnapshot,
@@ -564,15 +573,52 @@ class MainViewModel(
         }
     }
 
+    fun autoSaveEditorProfile(profile: EditorProfileEntity, onAutoSaved: () -> Unit = {}) {
+        if (profile.name.isBlank() || profile.brandName.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                repository.saveEditorProfile(profile)
+            }.onSuccess {
+                onAutoSaved()
+            }
+        }
+    }
+
+    fun saveClientDraft(draft: ClientFormDraft) {
+        val dm = draftManager ?: return
+        viewModelScope.launch { dm.saveClientDraft(draft) }
+    }
+
+    suspend fun getClientDraft(clientId: Long?): ClientFormDraft? =
+        draftManager?.getClientDraft(clientId)
+
+    fun clearClientDraft(clientId: Long?) {
+        val dm = draftManager ?: return
+        viewModelScope.launch { dm.clearClientDraft(clientId) }
+    }
+
+    fun saveProjectDraft(draft: ProjectFormDraft) {
+        val dm = draftManager ?: return
+        viewModelScope.launch { dm.saveProjectDraft(draft) }
+    }
+
+    suspend fun getProjectDraft(projectId: Long?): ProjectFormDraft? =
+        draftManager?.getProjectDraft(projectId)
+
+    fun clearProjectDraft(projectId: Long?) {
+        val dm = draftManager ?: return
+        viewModelScope.launch { dm.clearProjectDraft(projectId) }
+    }
+
     fun updateSettings(settings: AppSettingsEntity) {
         viewModelScope.launch {
             repository.updateSettings(settings)
         }
     }
 
-    suspend fun buildBackupJson(): String {
+    suspend fun buildBackupJson(): String = withContext(Dispatchers.Default) {
         val snapshot = repository.getAllSnapshotForBackup()
-        return backupExportManager.serializeBackup(snapshot)
+        backupExportManager.serializeBackup(snapshot)
     }
 
     fun parseBackupJson(json: String): Result<BackupPayloadDto> {
@@ -593,10 +639,10 @@ class MainViewModel(
         }
     }
 
-    suspend fun buildCsvExport(target: ExportTarget): String {
+    suspend fun buildCsvExport(target: ExportTarget): String = withContext(Dispatchers.Default) {
         val snapshot = repository.getAllSnapshotForBackup()
         val format = DateFormatOption.fromName(snapshot.appSettings.dateFormat)
-        return backupExportManager.generateCsv(target, snapshot, dateProvider.today(), format)
+        backupExportManager.generateCsv(target, snapshot, dateProvider.today(), format)
     }
 
     fun notifyMessage(message: String, isError: Boolean = false) {
@@ -607,11 +653,12 @@ class MainViewModel(
         fun factory(
             repository: CareerRepository,
             backupExportManager: BackupExportManager,
-            dateProvider: DateProvider
+            dateProvider: DateProvider,
+            draftManager: DraftManager? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MainViewModel(repository, backupExportManager, dateProvider) as T
+                return MainViewModel(repository, backupExportManager, dateProvider, draftManager) as T
             }
         }
     }

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.example.data.backup.BackupExportManager
 import com.example.data.local.AppDatabase
+import com.example.data.local.DraftManager
 import com.example.data.local.PreferencesDataStore
 import com.example.data.repository.CareerRepository
 import com.example.util.DateProvider
@@ -20,6 +21,7 @@ class AppContainer(
         AppDatabase.create(context)
     }
     val preferencesDataStore: PreferencesDataStore = PreferencesDataStore(context)
+    val draftManager: DraftManager = DraftManager(context.applicationContext)
     val repository: CareerRepository = CareerRepository(database, preferencesDataStore)
     val backupExportManager: BackupExportManager = BackupExportManager()
 }

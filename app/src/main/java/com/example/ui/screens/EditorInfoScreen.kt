@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.DateFormatOption
@@ -46,11 +48,12 @@ import com.example.ui.components.DatePickerField
 import com.example.ui.components.MetricTile
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
 import com.example.ui.viewmodel.MainViewModel
 import com.example.util.Formatters
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 
 @Composable
@@ -64,20 +67,60 @@ fun EditorInfoScreen(
     val startDate = LocalDate.ofEpochDay(profile.officialStartDateEpochDay)
     val experience = Formatters.calculateExperience(startDate, uiState.today)
 
-    var name by remember(profile) { mutableStateOf(profile.name) }
-    var brandName by remember(profile) { mutableStateOf(profile.brandName) }
-    var profession by remember(profile) { mutableStateOf(profile.profession) }
-    var officialStartEpoch by remember(profile) { mutableStateOf(profile.officialStartDateEpochDay) }
+    var name by remember(profile.id) { mutableStateOf(profile.name) }
+    var brandName by remember(profile.id) { mutableStateOf(profile.brandName) }
+    var profession by remember(profile.id) { mutableStateOf(profile.profession) }
+    var officialStartEpoch by remember(profile.id) { mutableStateOf(profile.officialStartDateEpochDay) }
     var isStartDateUnlocked by remember { mutableStateOf(false) }
     var showUnlockConfirm by remember { mutableStateOf(false) }
 
-    var professionalExp by remember(profile) { mutableStateOf(profile.professionalExperience) }
-    var skills by remember(profile) { mutableStateOf(profile.skills) }
-    var editingSoftware by remember(profile) { mutableStateOf(profile.editingSoftware) }
-    var specializations by remember(profile) { mutableStateOf(profile.specializations) }
-    var portfolioLink by remember(profile) { mutableStateOf(profile.portfolioLink) }
-    var personalNotes by remember(profile) { mutableStateOf(profile.personalNotes) }
+    var professionalExp by remember(profile.id) { mutableStateOf(profile.professionalExperience) }
+    var skills by remember(profile.id) { mutableStateOf(profile.skills) }
+    var editingSoftware by remember(profile.id) { mutableStateOf(profile.editingSoftware) }
+    var specializations by remember(profile.id) { mutableStateOf(profile.specializations) }
+    var portfolioLink by remember(profile.id) { mutableStateOf(profile.portfolioLink) }
+    var personalNotes by remember(profile.id) { mutableStateOf(profile.personalNotes) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var autoSavedVisible by remember { mutableStateOf(false) }
+
+    // Keep local fields synced if backup restore replaces profile from outside
+    LaunchedEffect(profile) {
+        if (profile.name != name && name == "Rohan" && profile.name != "Rohan") name = profile.name
+        if (profile.brandName != brandName && brandName == "Rohan Edits" && profile.brandName != "Rohan Edits") brandName = profile.brandName
+    }
+
+    // Automatic debounced persistence so large profile notes never get lost on navigation or closure
+    LaunchedEffect(
+        name,
+        brandName,
+        profession,
+        officialStartEpoch,
+        professionalExp,
+        skills,
+        editingSoftware,
+        specializations,
+        portfolioLink,
+        personalNotes
+    ) {
+        val candidate = profile.copy(
+            name = name.trim(),
+            brandName = brandName.trim(),
+            profession = profession.trim(),
+            officialStartDateEpochDay = officialStartEpoch,
+            professionalExperience = professionalExp.trim(),
+            skills = skills.trim(),
+            editingSoftware = editingSoftware.trim(),
+            specializations = specializations.trim(),
+            portfolioLink = portfolioLink.trim(),
+            personalNotes = personalNotes.trim()
+        )
+        if (candidate != profile && candidate.name.isNotBlank() && candidate.brandName.isNotBlank()) {
+            delay(800L)
+            viewModel.autoSaveEditorProfile(candidate) {
+                autoSavedVisible = true
+            }
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -88,7 +131,7 @@ fun EditorInfoScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Profile Banner & Live Experience Counter
-        item {
+        item(key = "profile_banner", contentType = "banner") {
             StudioCard {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -104,9 +147,27 @@ fun EditorInfoScreen(
                     )
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(profile.brandName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Text(profile.profession, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = profile.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = profile.brandName,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = profile.profession,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
@@ -115,7 +176,11 @@ fun EditorInfoScreen(
                         Text("Experience (Days)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             "${experience.totalDays} days",
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
+                            ),
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -123,7 +188,11 @@ fun EditorInfoScreen(
                         Text("Months & Days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             experience.summaryText,
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold)
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
+                            )
                         )
                     }
                 }
@@ -137,7 +206,7 @@ fun EditorInfoScreen(
         }
 
         // Calendar Integration (Read directly from Calendar database)
-        item {
+        item(key = "calendar_metrics", contentType = "metrics") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricTile(
                     label = "Editing Days",
@@ -161,28 +230,41 @@ fun EditorInfoScreen(
         }
 
         // Editable Fields + Protected Start Date
-        item {
+        item(key = "profile_form", contentType = "form") {
             StudioCard {
-                Text("Professional Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Professional Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (autoSavedVisible) {
+                        Text(
+                            text = "Auto-saved",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusGreen
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it; errorMessage = null },
+                        onValueChange = { name = it; errorMessage = null; autoSavedVisible = false },
                         label = { Text("Name *") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("editor_name_input")
                     )
                     OutlinedTextField(
                         value = brandName,
-                        onValueChange = { brandName = it; errorMessage = null },
+                        onValueChange = { brandName = it; errorMessage = null; autoSavedVisible = false },
                         label = { Text("Brand Name *") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("editor_brand_input")
                     )
                     OutlinedTextField(
                         value = profession,
-                        onValueChange = { profession = it },
+                        onValueChange = { profession = it; autoSavedVisible = false },
                         label = { Text("Profession") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -199,9 +281,13 @@ fun EditorInfoScreen(
                                 Text("Official Editing Start Date", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     Formatters.formatDate(officialStartEpoch, dateFormat),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily)
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontFamily = InterFontFamily,
+                                        fontFeatureSettings = "tnum"
+                                    )
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
                             OutlinedButton(
                                 onClick = { showUnlockConfirm = true },
                                 modifier = Modifier.testTag("editor_unlock_start_date")
@@ -227,46 +313,49 @@ fun EditorInfoScreen(
 
                     OutlinedTextField(
                         value = professionalExp,
-                        onValueChange = { professionalExp = it },
+                        onValueChange = { professionalExp = it; autoSavedVisible = false },
                         label = { Text("Professional Experience") },
                         minLines = 2,
-                        maxLines = 4,
+                        maxLines = 5,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = skills,
-                        onValueChange = { skills = it },
+                        onValueChange = { skills = it; autoSavedVisible = false },
                         label = { Text("Skills") },
                         placeholder = { Text("e.g. Motion Graphics, Keyframing, Sound Design") },
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = editingSoftware,
-                        onValueChange = { editingSoftware = it },
+                        onValueChange = { editingSoftware = it; autoSavedVisible = false },
                         label = { Text("Editing Software") },
                         placeholder = { Text("e.g. After Effects, Premiere Pro, DaVinci Resolve") },
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = specializations,
-                        onValueChange = { specializations = it },
+                        onValueChange = { specializations = it; autoSavedVisible = false },
                         label = { Text("Specializations") },
                         placeholder = { Text("e.g. SaaS Explainers, Retention Reels") },
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = portfolioLink,
-                        onValueChange = { portfolioLink = it },
+                        onValueChange = { portfolioLink = it; autoSavedVisible = false },
                         label = { Text("Portfolio Link") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = personalNotes,
-                        onValueChange = { personalNotes = it },
+                        onValueChange = { personalNotes = it; autoSavedVisible = false },
                         label = { Text("Personal Notes") },
                         minLines = 2,
-                        maxLines = 4,
+                        maxLines = 6,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -295,6 +384,7 @@ fun EditorInfoScreen(
                                 )
                             ) {
                                 isStartDateUnlocked = false
+                                autoSavedVisible = true
                             }
                         },
                         modifier = Modifier

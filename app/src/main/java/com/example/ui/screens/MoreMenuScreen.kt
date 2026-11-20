@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Analytics
@@ -35,6 +36,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.ui.components.StudioCard
@@ -58,7 +60,7 @@ fun MoreMenuScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
+        item(key = "more_profile", contentType = "profile") {
             StudioCard(onClick = onOpenEditorInfo) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -77,12 +79,16 @@ fun MoreMenuScreen(
                         Text(
                             text = uiState.editorProfile.name,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "${uiState.editorProfile.brandName} · ${uiState.editorProfile.profession}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Icon(
@@ -94,7 +100,7 @@ fun MoreMenuScreen(
             }
         }
 
-        item {
+        item(key = "more_analytics", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "Analytics Dashboard",
                 subtitle = "Earnings charts, video output & client analytics",
@@ -103,7 +109,7 @@ fun MoreMenuScreen(
                 onClick = onOpenAnalytics
             )
         }
-        item {
+        item(key = "more_editor_info", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "Editor Info",
                 subtitle = "Professional profile, skills, software & experience counter",
@@ -112,7 +118,7 @@ fun MoreMenuScreen(
                 onClick = onOpenEditorInfo
             )
         }
-        item {
+        item(key = "more_settings", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "App Settings",
                 subtitle = "Theme mode, date format, currency & delete confirmation",
@@ -121,7 +127,7 @@ fun MoreMenuScreen(
                 onClick = onOpenSettings
             )
         }
-        item {
+        item(key = "more_backup_restore", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "Data Backup & Restore",
                 subtitle = "Save or restore full portable JSON backup",
@@ -130,7 +136,7 @@ fun MoreMenuScreen(
                 onClick = onOpenBackupRestore
             )
         }
-        item {
+        item(key = "more_export_data", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "Export Data",
                 subtitle = "Export clients, projects, calendar & ledger to CSV",
@@ -139,7 +145,7 @@ fun MoreMenuScreen(
                 onClick = onOpenExportData
             )
         }
-        item {
+        item(key = "more_about_app", contentType = "menu_item") {
             MoreMenuItemCard(
                 title = "About App",
                 subtitle = "Rohan Edits App info, ownership & offline architecture",
@@ -170,7 +176,7 @@ private fun MoreMenuItemCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
@@ -186,12 +192,16 @@ private fun MoreMenuItemCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Icon(

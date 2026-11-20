@@ -66,7 +66,7 @@ import com.example.ui.components.MetricTile
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusRed
@@ -250,12 +250,19 @@ fun BudgetScreen(
                             Text("This Month", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 "+${Formatters.formatCurrency(uiState.home.currentMonthEarnings, currency)}",
-                                style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusGreen
                             )
                             Text(
                                 "-${Formatters.formatCurrency(uiState.home.currentMonthExpenses, currency)}",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusRed
                             )
                         }
@@ -263,12 +270,19 @@ fun BudgetScreen(
                             Text("Year ${today.year}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 "+${Formatters.formatCurrency(yearlyIncome, currency)}",
-                                style = MaterialTheme.typography.titleSmall.copy(fontFamily = MonoFontFamily, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusGreen
                             )
                             Text(
                                 "-${Formatters.formatCurrency(yearlyExpenses, currency)}",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = StatusRed
                             )
                         }
@@ -352,7 +366,7 @@ fun BudgetScreen(
                     )
                 }
             } else {
-                items(filteredIncome, key = { it.id }) { tx ->
+                items(filteredIncome, key = { it.id }, contentType = { "income_card" }) { tx ->
                     StudioCard(modifier = Modifier.testTag("income_card_${tx.id}")) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -375,22 +389,28 @@ fun BudgetScreen(
                                 Text(
                                     text = subtitle,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 if (tx.notes.isNotBlank()) {
                                     Text(
                                         text = tx.notes,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = "+${Formatters.formatCurrency(tx.amount, currency)}",
                                     style = MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = MonoFontFamily,
-                                        fontWeight = FontWeight.Bold
+                                        fontFamily = InterFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFeatureSettings = "tnum"
                                     ),
                                     color = StatusGreen
                                 )
@@ -441,7 +461,7 @@ fun BudgetScreen(
                     )
                 }
             } else {
-                items(filteredExpenses, key = { it.id }) { ex ->
+                items(filteredExpenses, key = { it.id }, contentType = { "expense_card" }) { ex ->
                     StudioCard(modifier = Modifier.testTag("expense_card_${ex.id}")) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -458,7 +478,9 @@ fun BudgetScreen(
                                 Text(
                                     text = ex.description,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = Formatters.formatDate(ex.dateEpochDay, dateFormat),
@@ -469,16 +491,20 @@ fun BudgetScreen(
                                     Text(
                                         text = ex.notes,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = "-${Formatters.formatCurrency(ex.amount, currency)}",
                                     style = MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = MonoFontFamily,
-                                        fontWeight = FontWeight.Bold
+                                        fontFamily = InterFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFeatureSettings = "tnum"
                                     ),
                                     color = StatusRed
                                 )
@@ -682,7 +708,7 @@ private fun IncomeFormDialog(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("Notes") },
-                    singleLine = true,
+                    maxLines = 4,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (error != null) {
@@ -794,7 +820,7 @@ private fun ExpenseFormDialog(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("Notes") },
-                    singleLine = true,
+                    maxLines = 4,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (error != null) {

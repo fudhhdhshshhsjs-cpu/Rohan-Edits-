@@ -88,7 +88,7 @@ abstract class AppDatabase : RoomDatabase() {
                     INSERT OR IGNORE INTO app_settings (
                         id, themeMode, dateFormat, currencySymbol, confirmBeforeDelete, deadlineRemindersEnabled
                     ) VALUES (
-                        1, 'LIGHT', 'DD_MMM_YYYY', '₹', 1, 0
+                        1, 'DARK', 'DD_MMM_YYYY', '₹', 1, 0
                     )
                     """.trimIndent()
                 )

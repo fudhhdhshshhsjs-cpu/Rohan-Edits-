@@ -53,7 +53,7 @@ import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.util.Formatters
@@ -247,7 +247,7 @@ private fun ClientsListContent(
                 )
             }
         } else {
-            items(filteredClients, key = { it.client.id }) { item ->
+            items(filteredClients, key = { it.client.id }, contentType = { "client_card" }) { item ->
                 val client = item.client
                 val platform = PlatformType.fromName(client.platform)
                 val type = ClientType.fromName(client.clientType)
@@ -282,12 +282,14 @@ private fun ClientsListContent(
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = Formatters.formatCurrency(item.pendingPayments, currency),
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = MonoFontFamily,
-                                    fontWeight = FontWeight.Bold
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
                                 ),
                                 color = if (item.pendingPayments > 0) StatusAmber else StatusGreen
                             )
@@ -306,12 +308,19 @@ private fun ClientsListContent(
                         Text(
                             text = "${item.totalProjects} Projects · ${item.completedVideos} Completed",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                         if (client.perVideoPrice > 0) {
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${Formatters.formatCurrency(client.perVideoPrice, currency)} / video",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = InterFontFamily,
+                                    fontFeatureSettings = "tnum"
+                                ),
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }

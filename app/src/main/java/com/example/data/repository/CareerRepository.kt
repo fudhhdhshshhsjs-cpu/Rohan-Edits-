@@ -1,5 +1,8 @@
 package com.example.data.repository
 
+import android.database.sqlite.SQLiteBlobTooBigException
+import android.database.sqlite.SQLiteException
+import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
 import com.example.data.local.AppDatabase
 import com.example.data.local.PreferencesDataStore
@@ -16,8 +19,12 @@ import com.example.data.model.PaymentStatus
 import com.example.data.model.ProjectStatus
 import com.example.data.model.VideoCategory
 import com.example.util.DEFAULT_JOURNEY_START_DATE
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class CareerRepository(
     private val db: AppDatabase,
@@ -31,24 +38,55 @@ class CareerRepository(
     private val expenseDao = db.expenseDao()
     private val settingsDao = db.appSettingsDao()
 
-    val editorProfile: Flow<EditorProfileEntity> = editorDao.observeProfile().map {
-        it ?: EditorProfileEntity(officialStartDateEpochDay = DEFAULT_JOURNEY_START_DATE.toEpochDay())
-    }
+    val editorProfile: Flow<EditorProfileEntity> = editorDao.observeProfile()
+        .map { it ?: EditorProfileEntity(officialStartDateEpochDay = DEFAULT_JOURNEY_START_DATE.toEpochDay()) }
+        .catch { emit(EditorProfileEntity(officialStartDateEpochDay = DEFAULT_JOURNEY_START_DATE.toEpochDay())) }
+        .flowOn(Dispatchers.IO)
 
     val clients: Flow<List<ClientEntity>> = clientDao.observeAllClients()
+        .catch { emit(emptyList()) }
+        .flowOn(Dispatchers.IO)
+
     val projects: Flow<List<ProjectEntity>> = projectDao.observeAllProjects()
+        .catch { emit(emptyList()) }
+        .flowOn(Dispatchers.IO)
+
     val calendarDays: Flow<List<CalendarDayEntity>> = calendarDao.observeAllCalendarDays()
+        .catch { emit(emptyList()) }
+        .flowOn(Dispatchers.IO)
+
     val incomeTransactions: Flow<List<IncomeTransactionEntity>> = incomeDao.observeAllIncome()
+        .catch { emit(emptyList()) }
+        .flowOn(Dispatchers.IO)
+
     val expenseTransactions: Flow<List<ExpenseTransactionEntity>> = expenseDao.observeAllExpenses()
+        .catch { emit(emptyList()) }
+        .flowOn(Dispatchers.IO)
+
     val settings: Flow<AppSettingsEntity> = prefs.settingsFlow
+        .catch { emit(AppSettingsEntity()) }
+        .flowOn(Dispatchers.IO)
 
-    fun observeClient(clientId: Long): Flow<ClientEntity?> = clientDao.observeClientById(clientId)
-    fun observeProject(projectId: Long): Flow<ProjectEntity?> = projectDao.observeProjectById(projectId)
-    fun observeProjectsForClient(clientId: Long): Flow<List<ProjectEntity>> = projectDao.observeProjectsForClient(clientId)
-    fun observeIncomeForClient(clientId: Long): Flow<List<IncomeTransactionEntity>> = incomeDao.observeIncomeForClient(clientId)
-    fun observeIncomeForProject(projectId: Long): Flow<List<IncomeTransactionEntity>> = incomeDao.observeIncomeForProject(projectId)
+    fun observeClient(clientId: Long): Flow<ClientEntity?> = clientDao.observeClientById(clientId).flowOn(Dispatchers.IO)
+    fun observeProject(projectId: Long): Flow<ProjectEntity?> = projectDao.observeProjectById(projectId).flowOn(Dispatchers.IO)
+    fun observeProjectsForClient(clientId: Long): Flow<List<ProjectEntity>> = projectDao.observeProjectsForClient(clientId).flowOn(Dispatchers.IO)
+    fun observeIncomeForClient(clientId: Long): Flow<List<IncomeTransactionEntity>> = incomeDao.observeIncomeForClient(clientId).flowOn(Dispatchers.IO)
+    fun observeIncomeForProject(projectId: Long): Flow<List<IncomeTransactionEntity>> = incomeDao.observeIncomeForProject(projectId).flowOn(Dispatchers.IO)
 
-    suspend fun ensureDefaultsExist() {
+    private suspend inline fun <T> safeDbWrite(crossinline block: suspend () -> T): T =
+        withContext(Dispatchers.IO) {
+            try {
+                block()
+            } catch (e: SQLiteFullException) {
+                throw IllegalStateException("Device storage is full. Free up space and try again.", e)
+            } catch (e: SQLiteBlobTooBigException) {
+                throw IllegalStateException("Entry is too large for a single database record.", e)
+            } catch (e: SQLiteException) {
+                throw IllegalStateException("Database storage error: ${e.localizedMessage ?: "unable to save"}", e)
+            }
+        }
+
+    suspend fun ensureDefaultsExist() = safeDbWrite {
         if (editorDao.getProfileOnce() == null) {
             editorDao.upsertProfile(EditorProfileEntity())
         }
@@ -57,17 +95,17 @@ class CareerRepository(
         }
     }
 
-    suspend fun saveEditorProfile(profile: EditorProfileEntity) {
+    suspend fun saveEditorProfile(profile: EditorProfileEntity) = safeDbWrite {
         require(profile.name.isNotBlank()) { "Editor name is required." }
         require(profile.brandName.isNotBlank()) { "Brand name is required." }
         editorDao.upsertProfile(profile.copy(id = 1, updatedAtMillis = System.currentTimeMillis()))
     }
 
-    suspend fun saveClient(client: ClientEntity): Long {
+    suspend fun saveClient(client: ClientEntity): Long = safeDbWrite {
         require(client.name.isNotBlank()) { "Client name is required." }
         require(client.perVideoPrice >= 0.0) { "Per video price cannot be negative." }
         val now = System.currentTimeMillis()
-        return if (client.id == 0L) {
+        if (client.id == 0L) {
             clientDao.insertClient(client.copy(createdAtMillis = now, updatedAtMillis = now))
         } else {
             clientDao.updateClient(client.copy(updatedAtMillis = now))
@@ -75,14 +113,7 @@ class CareerRepository(
         }
     }
 
-    /**
-     * Safe deletion policy:
-     * Income records are ALWAYS preserved with clientNameSnapshot.
-     * By default, associated projects are unlinked (clientId = null) so project history is preserved;
-     * if deleteAssociatedProjects is true (explicit user decision), only projects are removed while
-     * linked income transactions retain snapshots.
-     */
-    suspend fun deleteClientSafe(clientId: Long, deleteAssociatedProjects: Boolean = false) {
+    suspend fun deleteClientSafe(clientId: Long, deleteAssociatedProjects: Boolean = false) = safeDbWrite {
         db.withTransaction {
             val client = clientDao.getClientByIdOnce(clientId) ?: return@withTransaction
             val now = System.currentTimeMillis()
@@ -107,7 +138,7 @@ class CareerRepository(
         }
     }
 
-    suspend fun saveProject(project: ProjectEntity): Long {
+    suspend fun saveProject(project: ProjectEntity): Long = safeDbWrite {
         require(project.title.isNotBlank()) { "Project title is required." }
         require(project.projectAmount >= 0.0) { "Project amount cannot be negative." }
         val category = VideoCategory.fromName(project.category)
@@ -119,7 +150,7 @@ class CareerRepository(
         }
 
         val now = System.currentTimeMillis()
-        return db.withTransaction {
+        db.withTransaction {
             val paid = if (project.id != 0L) incomeDao.sumPaidForProject(project.id) else 0.0
             val derivedStatus = computePaymentStatus(project.projectAmount, paid)
             val entity = if (project.id == 0L) {
@@ -145,7 +176,7 @@ class CareerRepository(
         }
     }
 
-    suspend fun deleteProjectSafe(projectId: Long) {
+    suspend fun deleteProjectSafe(projectId: Long) = safeDbWrite {
         db.withTransaction {
             val proj = projectDao.getProjectByIdOnce(projectId) ?: return@withTransaction
             val linkedIncome = incomeDao.getAllIncomeOnce().filter { it.projectId == projectId }
@@ -157,7 +188,7 @@ class CareerRepository(
         }
     }
 
-    suspend fun setCalendarDayStatus(epochDay: Long, status: CalendarStatus, note: String = "") {
+    suspend fun setCalendarDayStatus(epochDay: Long, status: CalendarStatus, note: String = "") = safeDbWrite {
         val now = System.currentTimeMillis()
         if (status == CalendarStatus.NOT_MARKED && note.isBlank()) {
             calendarDao.deleteCalendarDay(epochDay)
@@ -179,9 +210,9 @@ class CareerRepository(
         dateEpochDay: Long,
         paymentMethod: PaymentMethod,
         notes: String = ""
-    ): Long {
+    ): Long = safeDbWrite {
         require(amount > 0.0) { "Payment amount must be greater than zero." }
-        return db.withTransaction {
+        db.withTransaction {
             val project = projectDao.getProjectByIdOnce(projectId)
                 ?: throw IllegalArgumentException("Project not found.")
             val client = project.clientId?.let { clientDao.getClientByIdOnce(it) }
@@ -203,10 +234,10 @@ class CareerRepository(
         }
     }
 
-    suspend fun saveIncome(income: IncomeTransactionEntity): Long {
+    suspend fun saveIncome(income: IncomeTransactionEntity): Long = safeDbWrite {
         require(income.source.isNotBlank()) { "Income source is required." }
         require(income.amount > 0.0) { "Income amount must be greater than zero." }
-        return db.withTransaction {
+        db.withTransaction {
             val oldIncome = if (income.id != 0L) incomeDao.getIncomeByIdOnce(income.id) else null
             val client = income.clientId?.let { clientDao.getClientByIdOnce(it) }
             val project = income.projectId?.let { projectDao.getProjectByIdOnce(it) }
@@ -241,7 +272,7 @@ class CareerRepository(
         }
     }
 
-    suspend fun deleteIncome(incomeId: Long) {
+    suspend fun deleteIncome(incomeId: Long) = safeDbWrite {
         db.withTransaction {
             val existing = incomeDao.getIncomeByIdOnce(incomeId) ?: return@withTransaction
             incomeDao.deleteIncomeById(incomeId)
@@ -251,7 +282,7 @@ class CareerRepository(
         }
     }
 
-    suspend fun saveExpense(expense: ExpenseTransactionEntity): Long {
+    suspend fun saveExpense(expense: ExpenseTransactionEntity): Long = safeDbWrite {
         require(expense.description.isNotBlank()) { "Expense description is required." }
         require(expense.amount > 0.0) { "Expense amount must be greater than zero." }
         val sanitized = expense.copy(
@@ -259,7 +290,7 @@ class CareerRepository(
             notes = expense.notes.trim(),
             createdAtMillis = if (expense.id == 0L) System.currentTimeMillis() else expense.createdAtMillis
         )
-        return if (sanitized.id == 0L) {
+        if (sanitized.id == 0L) {
             expenseDao.insertExpense(sanitized)
         } else {
             expenseDao.updateExpense(sanitized)
@@ -267,29 +298,31 @@ class CareerRepository(
         }
     }
 
-    suspend fun deleteExpense(expenseId: Long) {
+    suspend fun deleteExpense(expenseId: Long) = safeDbWrite {
         expenseDao.deleteExpenseById(expenseId)
     }
 
-    suspend fun updateSettings(settings: AppSettingsEntity) {
+    suspend fun updateSettings(settings: AppSettingsEntity) = safeDbWrite {
         val clean = settings.copy(id = 1)
         prefs.updateSettings(clean)
         settingsDao.upsertSettings(clean)
     }
 
-    suspend fun getAllSnapshotForBackup(): DatabaseSnapshot = db.withTransaction {
-        DatabaseSnapshot(
-            editorProfile = editorDao.getProfileOnce() ?: EditorProfileEntity(),
-            clients = clientDao.getAllClientsOnce(),
-            projects = projectDao.getAllProjectsOnce(),
-            calendarDays = calendarDao.getAllCalendarDaysOnce(),
-            incomeTransactions = incomeDao.getAllIncomeOnce(),
-            expenseTransactions = expenseDao.getAllExpensesOnce(),
-            appSettings = settingsDao.getSettingsOnce() ?: AppSettingsEntity()
-        )
+    suspend fun getAllSnapshotForBackup(): DatabaseSnapshot = safeDbWrite {
+        db.withTransaction {
+            DatabaseSnapshot(
+                editorProfile = editorDao.getProfileOnce() ?: EditorProfileEntity(),
+                clients = clientDao.getAllClientsOnce(),
+                projects = projectDao.getAllProjectsOnce(),
+                calendarDays = calendarDao.getAllCalendarDaysOnce(),
+                incomeTransactions = incomeDao.getAllIncomeOnce(),
+                expenseTransactions = expenseDao.getAllExpensesOnce(),
+                appSettings = settingsDao.getSettingsOnce() ?: AppSettingsEntity()
+            )
+        }
     }
 
-    suspend fun restoreFromSnapshot(snapshot: DatabaseSnapshot) {
+    suspend fun restoreFromSnapshot(snapshot: DatabaseSnapshot) = safeDbWrite {
         db.withTransaction {
             incomeDao.deleteAllIncome()
             expenseDao.deleteAllExpenses()
@@ -313,7 +346,6 @@ class CareerRepository(
             if (snapshot.expenseTransactions.isNotEmpty()) {
                 expenseDao.insertAllExpenses(snapshot.expenseTransactions)
             }
-            // Re-verify all project payment totals from restored income ledger
             snapshot.projects.forEach { proj ->
                 recalculateProjectPaymentInternal(proj.id)
             }

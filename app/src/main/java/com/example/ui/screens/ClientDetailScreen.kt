@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -42,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.ClientType
 import com.example.data.model.DateFormatOption
@@ -52,6 +55,7 @@ import com.example.data.model.ProjectStatus
 import com.example.ui.components.DatePickerField
 import com.example.ui.components.DropdownSelectorField
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.ExpandableInfoRow
 import com.example.ui.components.MetricTile
 import com.example.ui.components.PaymentStatusBadge
 import com.example.ui.components.ProjectStatusBadge
@@ -59,7 +63,7 @@ import com.example.ui.components.SectionHeader
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusGreen
 import com.example.ui.viewmodel.MainViewModel
@@ -142,12 +146,14 @@ fun ClientDetailScreen(
                         }
                     }
                     if (client.perVideoPrice > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = Formatters.formatCurrency(client.perVideoPrice, currency),
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = MonoFontFamily,
-                                    fontWeight = FontWeight.Bold
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFeatureSettings = "tnum"
                                 ),
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -259,18 +265,18 @@ fun ClientDetailScreen(
         }
 
         // Client Information
-        item {
+        item(key = "client_info", contentType = "info") {
             StudioCard {
                 Text("Client Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
-                DetailInfoRow("Mobile", client.mobileNumber.ifBlank { "Not provided" })
-                DetailInfoRow(
+                ExpandableInfoRow("Mobile", client.mobileNumber.ifBlank { "Not provided" })
+                ExpandableInfoRow(
                     "First Project",
                     client.firstProjectDateEpochDay?.let { Formatters.formatDate(it, dateFormat) } ?: "Not set"
                 )
-                DetailInfoRow("Editing Style", client.preferredEditingStyle.ifBlank { "Not specified" })
-                DetailInfoRow("Instructions", client.instructions.ifBlank { "None" })
-                DetailInfoRow("Notes", client.additionalNotes.ifBlank { "None" })
+                ExpandableInfoRow("Editing Style", client.preferredEditingStyle.ifBlank { "Not specified" })
+                ExpandableInfoRow("Instructions", client.instructions.ifBlank { "None" })
+                ExpandableInfoRow("Notes", client.additionalNotes.ifBlank { "None" })
             }
         }
 
@@ -292,7 +298,7 @@ fun ClientDetailScreen(
                 )
             }
         } else {
-            items(clientProjects, key = { it.project.id }) { item ->
+            items(clientProjects, key = { it.project.id }, contentType = { "project" }) { item ->
                 val p = item.project
                 StudioCard(onClick = { onOpenProject(p.id) }) {
                     Row(
@@ -301,13 +307,20 @@ fun ClientDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(p.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = p.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text(
                                 text = Formatters.formatDate(p.projectDateEpochDay, dateFormat),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         ProjectStatusBadge(ProjectStatus.fromName(p.projectStatus), item.isOverdue)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -319,7 +332,10 @@ fun ClientDetailScreen(
                         PaymentStatusBadge(PaymentStatus.fromName(p.paymentStatus))
                         Text(
                             text = "${Formatters.formatCurrency(p.amountPaid, currency)} / ${Formatters.formatCurrency(p.projectAmount, currency)}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoFontFamily)
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = InterFontFamily,
+                                fontFeatureSettings = "tnum"
+                            )
                         )
                     }
                 }
@@ -327,11 +343,11 @@ fun ClientDetailScreen(
         }
 
         // Recent Payments
-        item {
+        item(key = "payments_header", contentType = "header") {
             SectionHeader(title = "Recent Payments (${clientPayments.size})")
         }
         if (clientPayments.isEmpty()) {
-            item {
+            item(key = "payments_empty", contentType = "empty") {
                 StudioCard {
                     Text(
                         text = "No payments recorded for this client yet.",
@@ -341,7 +357,7 @@ fun ClientDetailScreen(
                 }
             }
         } else {
-            items(clientPayments, key = { it.id }) { tx ->
+            items(clientPayments, key = { it.id }, contentType = { "payment" }) { tx ->
                 StudioCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -349,18 +365,26 @@ fun ClientDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(tx.source, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = tx.source,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text(
                                 text = Formatters.formatDate(tx.dateEpochDay, dateFormat),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "+${Formatters.formatCurrency(tx.amount, currency)}",
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = MonoFontFamily,
-                                fontWeight = FontWeight.Bold
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
                             ),
                             color = StatusGreen
                         )
@@ -437,7 +461,10 @@ fun ClientDetailScreen(
             onDismissRequest = { showRecordPaymentDialog = false },
             title = { Text("Record Client Payment") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     if (clientProjects.isNotEmpty()) {
                         val options = listOf<Pair<Long?, String>>(null to "General Client Income (No Project)") +
                             clientProjects.map { it.project.id to "${it.project.title} (Due ${Formatters.formatCurrency(it.remainingAmount, currency)})" }
@@ -484,7 +511,7 @@ fun ClientDetailScreen(
                         value = notes,
                         onValueChange = { notes = it },
                         label = { Text("Notes") },
-                        singleLine = true,
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (error != null) {
@@ -532,16 +559,5 @@ fun ClientDetailScreen(
 
 @Composable
 fun DetailInfoRow(label: String, value: String) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
+    ExpandableInfoRow(label = label, value = value)
 }

@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
@@ -35,7 +33,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -60,19 +58,22 @@ import com.example.data.model.DateFormatOption
 import com.example.data.model.PaymentStatus
 import com.example.data.model.ProjectPriority
 import com.example.data.model.ProjectStatus
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusAmberContainerDark
 import com.example.ui.theme.StatusAmberContainerLight
+import com.example.ui.theme.StatusAmberLight
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusGreenContainerDark
 import com.example.ui.theme.StatusGreenContainerLight
+import com.example.ui.theme.StatusGreenLight
 import com.example.ui.theme.StatusGrey
 import com.example.ui.theme.StatusGreyContainerDark
 import com.example.ui.theme.StatusGreyContainerLight
 import com.example.ui.theme.StatusRed
 import com.example.ui.theme.StatusRedContainerDark
 import com.example.ui.theme.StatusRedContainerLight
+import com.example.ui.theme.StatusRedLight
 import com.example.util.Formatters
 import java.time.Instant
 import java.time.LocalDate
@@ -85,20 +86,21 @@ fun StudioCard(
     containerColor: Color = MaterialTheme.colorScheme.surface,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val shape = MaterialTheme.shapes.medium
     val cardModifier = if (onClick != null) {
         modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
+            .clip(shape)
             .clickable(onClick = onClick)
     } else {
         modifier.fillMaxWidth()
     }
     Card(
         modifier = cardModifier,
-        shape = MaterialTheme.shapes.medium,
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -124,7 +126,10 @@ fun SectionHeader(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
         if (actionLabel != null && onActionClick != null) {
             TextButton(
@@ -169,8 +174,8 @@ fun MetricTile(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.12f)),
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColor.copy(alpha = 0.14f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -186,15 +191,16 @@ fun MetricTile(
         Text(
             text = value,
             style = MaterialTheme.typography.titleLarge.copy(
-                fontFamily = if (useMono) MonoFontFamily else MaterialTheme.typography.titleLarge.fontFamily,
-                fontWeight = FontWeight.Bold
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontFeatureSettings = if (useMono) "tnum" else null
             ),
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         if (!subtitle.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -215,7 +221,7 @@ fun StatusPill(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(6.dp),
         color = containerColor
     ) {
         Text(
@@ -224,19 +230,20 @@ fun StatusPill(
             color = contentColor,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
 }
 
 @Composable
 fun ProjectStatusBadge(status: ProjectStatus, isOverdue: Boolean = false) {
-    val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.3f
     if (isOverdue) {
         StatusPill(
             text = "Overdue",
             containerColor = if (isDark) StatusRedContainerDark else StatusRedContainerLight,
-            contentColor = if (isDark) Color(0xFFFCA5A5) else StatusRed
+            contentColor = if (isDark) Color(0xFFFCA5A5) else StatusRedLight
         )
         return
     }
@@ -244,7 +251,7 @@ fun ProjectStatusBadge(status: ProjectStatus, isOverdue: Boolean = false) {
         ProjectStatus.COMPLETED -> StatusPill(
             text = status.label,
             containerColor = if (isDark) StatusGreenContainerDark else StatusGreenContainerLight,
-            contentColor = if (isDark) Color(0xFF86EFAC) else StatusGreen
+            contentColor = if (isDark) Color(0xFF86EFAC) else StatusGreenLight
         )
         ProjectStatus.IN_PROGRESS -> StatusPill(
             text = status.label,
@@ -254,7 +261,7 @@ fun ProjectStatusBadge(status: ProjectStatus, isOverdue: Boolean = false) {
         ProjectStatus.PENDING -> StatusPill(
             text = status.label,
             containerColor = if (isDark) StatusAmberContainerDark else StatusAmberContainerLight,
-            contentColor = if (isDark) Color(0xFFFCD34D) else StatusAmber
+            contentColor = if (isDark) Color(0xFFFCD34D) else StatusAmberLight
         )
         ProjectStatus.CANCELLED -> StatusPill(
             text = status.label,
@@ -266,36 +273,75 @@ fun ProjectStatusBadge(status: ProjectStatus, isOverdue: Boolean = false) {
 
 @Composable
 fun PaymentStatusBadge(status: PaymentStatus) {
-    val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.3f
     when (status) {
         PaymentStatus.PAID -> StatusPill(
             text = status.label,
             containerColor = if (isDark) StatusGreenContainerDark else StatusGreenContainerLight,
-            contentColor = if (isDark) Color(0xFF86EFAC) else StatusGreen
+            contentColor = if (isDark) Color(0xFF86EFAC) else StatusGreenLight
         )
         PaymentStatus.PARTIAL -> StatusPill(
             text = status.label,
             containerColor = if (isDark) StatusAmberContainerDark else StatusAmberContainerLight,
-            contentColor = if (isDark) Color(0xFFFCD34D) else StatusAmber
+            contentColor = if (isDark) Color(0xFFFCD34D) else StatusAmberLight
         )
         PaymentStatus.UNPAID -> StatusPill(
             text = status.label,
             containerColor = if (isDark) StatusRedContainerDark else StatusRedContainerLight,
-            contentColor = if (isDark) Color(0xFFFCA5A5) else StatusRed
+            contentColor = if (isDark) Color(0xFFFCA5A5) else StatusRedLight
         )
     }
 }
 
 @Composable
 fun PriorityBadge(priority: ProjectPriority) {
-    val isDark = MaterialTheme.colorScheme.background.red < 0.2f
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.3f
     val (bg, fg) = when (priority) {
-        ProjectPriority.URGENT -> (if (isDark) StatusRedContainerDark else StatusRedContainerLight) to (if (isDark) Color(0xFFFCA5A5) else StatusRed)
-        ProjectPriority.HIGH -> (if (isDark) StatusAmberContainerDark else StatusAmberContainerLight) to (if (isDark) Color(0xFFFCD34D) else StatusAmber)
+        ProjectPriority.URGENT -> (if (isDark) StatusRedContainerDark else StatusRedContainerLight) to (if (isDark) Color(0xFFFCA5A5) else StatusRedLight)
+        ProjectPriority.HIGH -> (if (isDark) StatusAmberContainerDark else StatusAmberContainerLight) to (if (isDark) Color(0xFFFCD34D) else StatusAmberLight)
         ProjectPriority.NORMAL -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
         ProjectPriority.LOW -> (if (isDark) StatusGreyContainerDark else StatusGreyContainerLight) to (if (isDark) Color(0xFFCBD5E1) else StatusGrey)
     }
     StatusPill(text = priority.label, containerColor = bg, contentColor = fg)
+}
+
+@Composable
+fun ExpandableInfoRow(
+    label: String,
+    value: String,
+    previewLimit: Int = 280
+) {
+    var expanded by remember(value) { mutableStateOf(false) }
+    val isLong = value.length > previewLimit
+
+    Column(modifier = Modifier.padding(vertical = 5.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        val displayedText = if (!isLong || expanded) {
+            if (value.length > 4000) value.take(4000) + "\n… (${value.length} characters stored)" else value
+        } else {
+            value.take(previewLimit).trimEnd() + "…"
+        }
+        Text(
+            text = displayedText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (isLong) {
+            Text(
+                text = if (expanded) "Show less" else "Read more (${value.length} chars)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clickable { expanded = !expanded }
+            )
+        }
+    }
 }
 
 @Composable
@@ -312,13 +358,13 @@ fun EmptyStateCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
@@ -326,10 +372,10 @@ fun EmptyStateCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
@@ -344,7 +390,7 @@ fun EmptyStateCard(
                 textAlign = TextAlign.Center
             )
             if (actionLabel != null && onActionClick != null) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
                 Button(
                     onClick = onActionClick,
                     modifier = Modifier

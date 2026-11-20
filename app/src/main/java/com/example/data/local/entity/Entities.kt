@@ -151,7 +151,7 @@ data class ExpenseTransactionEntity(
 @Entity(tableName = "app_settings")
 data class AppSettingsEntity(
     @PrimaryKey val id: Int = 1,
-    val themeMode: String = ThemeMode.LIGHT.name,
+    val themeMode: String = ThemeMode.DARK.name,
     val dateFormat: String = DateFormatOption.DD_MMM_YYYY.name,
     val currencySymbol: String = "₹",
     val confirmBeforeDelete: Boolean = true,

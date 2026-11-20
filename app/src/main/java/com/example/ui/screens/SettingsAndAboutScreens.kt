@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -97,7 +98,7 @@ fun AppSettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Theme
-        item {
+        item(key = "settings_theme", contentType = "card") {
             StudioCard {
                 Text("Appearance Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
@@ -106,6 +107,9 @@ fun AppSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
+                            .clickable {
+                                viewModel.updateSettings(settings.copy(themeMode = mode.name))
+                            }
                             .testTag("settings_theme_${mode.name.lowercase()}"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -123,7 +127,7 @@ fun AppSettingsScreen(
         }
 
         // Date Format
-        item {
+        item(key = "settings_date_format", contentType = "card") {
             StudioCard {
                 Text("Date Format", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
@@ -132,6 +136,9 @@ fun AppSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
+                            .clickable {
+                                viewModel.updateSettings(settings.copy(dateFormat = option.name))
+                            }
                             .testTag("settings_date_${option.name.lowercase()}"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

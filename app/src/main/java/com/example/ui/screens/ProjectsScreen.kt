@@ -3,6 +3,8 @@ package com.example.ui.screens
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -62,10 +65,11 @@ import com.example.ui.components.ProjectStatusBadge
 import com.example.ui.components.StatusPill
 import com.example.ui.components.StudioCard
 import com.example.ui.state.MainUiState
-import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.StatusRed
 import com.example.util.Formatters
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProjectsScreen(
     uiState: MainUiState,
@@ -302,7 +306,7 @@ fun ProjectsScreen(
                 )
             }
         } else {
-            items(filteredProjects, key = { it.project.id }) { item ->
+            items(filteredProjects, key = { it.project.id }, contentType = { "project_card" }) { item ->
                 val p = item.project
                 StudioCard(
                     onClick = { onOpenProject(p.id) },
@@ -329,7 +333,9 @@ fun ProjectsScreen(
                                     }
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -341,10 +347,10 @@ fun ProjectsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         StatusPill(
                             text = ProjectType.fromName(p.projectType).label,
@@ -367,8 +373,12 @@ fun ProjectsScreen(
                                 "Due ${Formatters.formatDate(it, dateFormat)}"
                             } ?: "Date ${Formatters.formatDate(p.projectDateEpochDay, dateFormat)}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (item.isOverdue) StatusRed else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (item.isOverdue) StatusRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (p.projectAmount > 0) {
                                 "${Formatters.formatCurrency(p.amountPaid, currency)} / ${Formatters.formatCurrency(p.projectAmount, currency)}"
@@ -376,8 +386,9 @@ fun ProjectsScreen(
                                 "Non-billed"
                             },
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = MonoFontFamily,
-                                fontWeight = FontWeight.Bold
+                                fontFamily = InterFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
                             ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -392,7 +403,10 @@ fun ProjectsScreen(
             onDismissRequest = { showFilterDialog = false },
             title = { Text("Filter Projects") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     val clientOptions = listOf<Pair<Long?, String>>(null to "All Clients") +
                         uiState.clientsWithStats.map { it.client.id to it.client.name }
                     DropdownSelectorField(

@@ -18,7 +18,8 @@ class MainActivity : ComponentActivity() {
                 factory = MainViewModel.factory(
                     repository = appContainer.repository,
                     backupExportManager = appContainer.backupExportManager,
-                    dateProvider = appContainer.dateProvider
+                    dateProvider = appContainer.dateProvider,
+                    draftManager = appContainer.draftManager
                 )
             )
             RohanEditsAppShell(viewModel = mainViewModel)
